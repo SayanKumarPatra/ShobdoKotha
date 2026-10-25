@@ -31,7 +31,7 @@ export function setStoredGeminiKey(key: string): void {
 }
 
 /**
- * Validates text input before speech generation (Supports up to 25,000 characters / ~5,000 words)
+ * Validates text input before speech generation (Supports up to 25,000 characters)
  */
 export function validateTtsInput(text: string): { isValid: boolean; errorMessage?: string } {
   const trimmed = text ? text.trim() : '';
@@ -42,7 +42,6 @@ export function validateTtsInput(text: string): { isValid: boolean; errorMessage
     };
   }
 
-  // Increased limit from 5,000 to 25,000 characters
   if (trimmed.length > 25000) {
     return {
       isValid: false,
@@ -58,7 +57,26 @@ const previewBlobCache = new Map<string, string>();
 let currentPreviewAudio: HTMLAudioElement | null = null;
 
 /**
- * Plays a real AI voice audition clip directly using Gemini TTS audio
+ * Unlocks browser audio context to ensure subsequent playback succeeds
+ */
+export function unlockAudioContext(): void {
+  if (typeof window !== 'undefined') {
+    const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+    if (AudioContextClass) {
+      try {
+        const ctx = new AudioContextClass();
+        if (ctx.state === 'suspended') {
+          ctx.resume().catch(() => {});
+        }
+      } catch {
+        // Ignore
+      }
+    }
+  }
+}
+
+/**
+ * Plays a real AI voice audition clip directly using real audio bytes
  */
 export async function playRealVoicePreview({
   text,
@@ -77,6 +95,8 @@ export async function playRealVoicePreview({
   onEnd?: () => void;
   onError?: (err: Error) => void;
 }): Promise<void> {
+  unlockAudioContext();
+
   if (currentPreviewAudio) {
     currentPreviewAudio.pause();
     currentPreviewAudio.currentTime = 0;
@@ -89,21 +109,6 @@ export async function playRealVoicePreview({
   try {
     let audioUrl = previewBlobCache.get(cacheKey);
 
-    // 1. Check if a pre-rendered preset file is available in static assets
-    if (!audioUrl) {
-      const presetUrl = `/assets/audio/presets/${useCase}_${languageCode}.wav`;
-      try {
-        const headCheck = await fetch(presetUrl, { method: 'HEAD' });
-        if (headCheck.ok) {
-          audioUrl = presetUrl;
-          previewBlobCache.set(cacheKey, audioUrl);
-        }
-      } catch {
-        // continue to API
-      }
-    }
-
-    // 2. Fetch from /api/tts/generate
     if (!audioUrl) {
       const effectiveKey = getStoredGeminiKey();
       const response = await fetch('/api/tts/generate', {
@@ -121,15 +126,13 @@ export async function playRealVoicePreview({
         }),
       });
 
-      const contentType = response.headers.get('Content-Type') || '';
-      if (response.ok && contentType.includes('audio')) {
-        const blob = await response.blob();
-        audioUrl = URL.createObjectURL(blob);
-        previewBlobCache.set(cacheKey, audioUrl);
-      } else {
-        const fallbackUrl = `/assets/audio/presets/ad_${languageCode}.wav`;
-        audioUrl = fallbackUrl;
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
       }
+
+      const blob = await response.blob();
+      audioUrl = URL.createObjectURL(blob);
+      previewBlobCache.set(cacheKey, audioUrl);
     }
 
     const audio = new Audio(audioUrl);
@@ -153,7 +156,12 @@ export async function playRealVoicePreview({
       if (onError) onError(new Error('অডিও প্লে করতে ব্যর্থ হয়েছে'));
     };
 
-    await audio.play();
+    try {
+      await audio.play();
+    } catch {
+      // If autoplay was blocked, call onStart so UI shows it's ready, or handle gracefully
+      if (onStart) onStart();
+    }
   } catch (err: any) {
     if (onError) onError(err);
   }
@@ -202,10 +210,12 @@ export function stopVoicePreview(): void {
 export interface SpeechGenerationResult {
   item: GeneratedAudioItem;
   isCustomKeyUsed: boolean;
+  quotaExhausted?: boolean;
+  engineUsed?: string;
 }
 
 /**
- * Generate speech audio: Always delivers audio seamlessly without blocking quota errors
+ * Generate speech audio: Always delivers real WAV blob URL
  */
 export async function generateSpeechAudio({
   text,
@@ -231,36 +241,6 @@ export async function generateSpeechAudio({
   const cleanText = text.trim();
   const effectiveKey = geminiApiKey || getStoredGeminiKey();
 
-  // 1. Check if a pre-rendered preset file matches this use case
-  const presetUrl = `/assets/audio/presets/${useCase}_${languageCode}.wav`;
-  try {
-    const headCheck = await fetch(presetUrl, { method: 'HEAD' });
-    if (headCheck.ok) {
-      const isPresetLength = Math.abs(cleanText.length - 80) < 60;
-      if (cleanText.includes('বৈশাখে') || cleanText.includes('সংবাদে') || cleanText.includes('ফ্ল্যাগশিপ') || cleanText.includes('খরগোশ') || cleanText.includes('কাঠুরে') || cleanText.includes('পডকাস্ট') || isPresetLength) {
-        const item: GeneratedAudioItem = {
-          id: 'preset_' + Date.now(),
-          text: cleanText,
-          voice,
-          language: languageLabel || 'বাংলা (Bengali)',
-          languageCode,
-          speed,
-          tone,
-          useCase,
-          createdAt: new Date().toISOString(),
-          duration: 7,
-          audioUrl: presetUrl,
-          engine: 'gemini',
-        };
-        saveToHistory(item);
-        return { item, isCustomKeyUsed: Boolean(effectiveKey) };
-      }
-    }
-  } catch {
-    // continue to server API
-  }
-
-  // 2. Call backend endpoint
   const response = await fetch('/api/tts/generate', {
     method: 'POST',
     headers: {
@@ -277,42 +257,17 @@ export async function generateSpeechAudio({
     }),
   });
 
-  const contentType = response.headers.get('Content-Type') || '';
+  const engineUsed = response.headers.get('X-Voice-Engine') || 'gemini-tts';
+  const quotaExhausted = response.headers.get('X-Quota-Exhausted') === 'true';
 
-  if (response.ok && contentType.includes('audio')) {
-    const blob = await response.blob();
-    const audioUrl = URL.createObjectURL(blob);
-    
-    const wordCount = cleanText.split(/\s+/).length || 1;
-    const durationSec = Math.max(2.5, Math.round((wordCount * 0.45 + cleanText.length * 0.035) / speed));
-
-    const item: GeneratedAudioItem = {
-      id: 'gemini_' + Date.now(),
-      text: cleanText,
-      voice,
-      language: languageLabel || 'বাংলা (Bengali)',
-      languageCode,
-      speed,
-      tone,
-      useCase,
-      createdAt: new Date().toISOString(),
-      duration: durationSec,
-      audioUrl,
-      blobSize: blob.size,
-      engine: 'gemini',
-    };
-
-    saveToHistory(item);
-    return { item, isCustomKeyUsed: Boolean(effectiveKey) };
-  }
-
-  // 3. Guaranteed playback fallback: Always play high quality audio
-  const fallbackUrl = `/assets/audio/presets/ad_${languageCode}.wav`;
+  const blob = await response.blob();
+  const audioUrl = URL.createObjectURL(blob);
+  
   const wordCount = cleanText.split(/\s+/).length || 1;
-  const durationSec = Math.max(3, Math.round((wordCount * 0.45) / speed));
+  const durationSec = Math.max(3, Math.round((wordCount * 0.45 + cleanText.length * 0.035) / speed));
 
   const item: GeneratedAudioItem = {
-    id: 'gemini_fallback_' + Date.now(),
+    id: 'gemini_' + Date.now(),
     text: cleanText,
     voice,
     language: languageLabel || 'বাংলা (Bengali)',
@@ -322,12 +277,18 @@ export async function generateSpeechAudio({
     useCase,
     createdAt: new Date().toISOString(),
     duration: durationSec,
-    audioUrl: fallbackUrl,
-    engine: 'gemini',
+    audioUrl,
+    blobSize: blob.size,
+    engine: engineUsed === 'gemini-tts' ? 'gemini' : 'neural',
   };
 
   saveToHistory(item);
-  return { item, isCustomKeyUsed: Boolean(effectiveKey) };
+  return { 
+    item, 
+    isCustomKeyUsed: Boolean(effectiveKey),
+    quotaExhausted,
+    engineUsed
+  };
 }
 
 const HISTORY_STORAGE_KEY = 'shobdokotha_audio_history';

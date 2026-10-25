@@ -64,7 +64,7 @@ export interface GeneratedAudioItem {
   duration: number; // in seconds
   audioUrl: string;
   blobSize?: number;
-  engine?: 'gemini' | 'browser';
+  engine?: 'gemini' | 'browser' | 'neural' | 'edge';
 }
 
 export type ActiveTab = 'home' | 'voices' | 'account';
