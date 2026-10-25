@@ -1,5 +1,5 @@
 import React from 'react';
-import { Home, Mic, Clock, User, Sparkles, Volume2, Settings } from 'lucide-react';
+import { Home, Mic, User, Sparkles } from 'lucide-react';
 import { Logo } from './Logo';
 import { ActiveTab } from '../types';
 
@@ -43,19 +43,6 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({ activeTab, setAc
           >
             <Mic className={`w-4 h-4 ${activeTab === 'voices' ? 'text-cyan-300' : 'text-neutral-400'}`} />
             <span>ভয়েস লাইব্রেরি</span>
-          </button>
-
-          {/* History */}
-          <button
-            onClick={() => setActiveTab('history')}
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-sm font-semibold transition-all ${
-              activeTab === 'history'
-                ? 'liquid-glass-button bg-white/15 text-white border-white/30 shadow-lg'
-                : 'text-neutral-400 hover:text-white hover:bg-white/5'
-            }`}
-          >
-            <Clock className={`w-4 h-4 ${activeTab === 'history' ? 'text-cyan-300' : 'text-neutral-400'}`} />
-            <span>প্রজন্মের ইতিহাস</span>
           </button>
 
           {/* My Account */}

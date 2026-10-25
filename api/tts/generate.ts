@@ -1,14 +1,5 @@
 import { GoogleGenAI } from '@google/genai';
 
-const ai = new GoogleGenAI({
-  apiKey: process.env.GEMINI_API_KEY,
-  httpOptions: {
-    headers: {
-      'User-Agent': 'aistudio-build',
-    },
-  },
-});
-
 const GEMINI_VOICE_MAP: Record<string, { voiceName: string; defaultStyle: string }> = {
   'ad-commercial-puck': {
     voiceName: 'Puck',
@@ -50,7 +41,14 @@ export default async function handler(req: any, res: any) {
   }
 
   try {
-    const { text, voiceId = 'ananya-female-bn', useCase = 'general', speed = 1.0, cartesiaKey } = req.body || {};
+    const { 
+      text, 
+      voiceId = 'ananya-female-bn', 
+      useCase = 'general', 
+      speed = 1.0, 
+      cartesiaKey,
+      geminiApiKey 
+    } = req.body || {};
 
     if (!text || typeof text !== 'string' || !text.trim()) {
       return res.status(400).json({ error: 'Text transcript is required' });
@@ -58,7 +56,7 @@ export default async function handler(req: any, res: any) {
 
     const cleanText = text.trim();
 
-    // 1. Optional Cartesia override
+    // 1. Optional Cartesia override if provided
     if (cartesiaKey && typeof cartesiaKey === 'string' && cartesiaKey.startsWith('sk_car_')) {
       try {
         const cartesiaResp = await fetch('https://api.cartesia.ai/tts/bytes', {
@@ -89,7 +87,26 @@ export default async function handler(req: any, res: any) {
       }
     }
 
-    // 2. Primary Google Gemini Flash Lite TTS
+    // 2. Resolve Gemini API Key (from user request or server environment)
+    const effectiveGeminiKey = geminiApiKey || process.env.GEMINI_API_KEY;
+
+    if (!effectiveGeminiKey) {
+      return res.status(200).json({
+        fallback: true,
+        requiresKey: true,
+        message: 'No GEMINI_API_KEY found. Switched to browser neural speech.',
+      });
+    }
+
+    const ai = new GoogleGenAI({
+      apiKey: effectiveGeminiKey,
+      httpOptions: {
+        headers: {
+          'User-Agent': 'aistudio-build',
+        },
+      },
+    });
+
     const voiceMapping = GEMINI_VOICE_MAP[voiceId] || GEMINI_VOICE_MAP['ananya-female-bn'];
     let stylePrompt = voiceMapping.defaultStyle;
 
@@ -133,7 +150,10 @@ export default async function handler(req: any, res: any) {
     const base64Data = ttsResponse.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
 
     if (!base64Data) {
-      throw new Error('Gemini TTS returned no audio data');
+      return res.status(200).json({
+        fallback: true,
+        message: 'Gemini TTS returned no audio data. Switched to browser neural speech.',
+      });
     }
 
     const audioBuffer = Buffer.from(base64Data, 'base64');
@@ -143,6 +163,9 @@ export default async function handler(req: any, res: any) {
     return res.send(audioBuffer);
   } catch (error) {
     console.error('Vercel API error:', error);
-    return res.status(500).json({ error: 'Failed to generate voice speech' });
+    return res.status(200).json({
+      fallback: true,
+      message: 'TTS generation server error, client fallback engaged.',
+    });
   }
 }

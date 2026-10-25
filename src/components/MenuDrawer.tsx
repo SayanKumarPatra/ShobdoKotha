@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, Home, Mic, Clock, User, ExternalLink, Sparkles, Globe } from 'lucide-react';
+import { X, Home, Mic, User, ExternalLink, Sparkles, Globe } from 'lucide-react';
 import { Logo } from './Logo';
 import { ActiveTab } from '../types';
 
@@ -70,21 +70,6 @@ export const MenuDrawer: React.FC<MenuDrawerProps> = ({
             >
               <Mic className="w-4 h-4 text-cyan-300" />
               <span>ভয়েস লাইব্রেরি</span>
-            </button>
-
-            <button
-              onClick={() => {
-                setActiveTab('history');
-                onClose();
-              }}
-              className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-2xl text-xs sm:text-sm font-medium transition-colors ${
-                activeTab === 'history'
-                  ? 'bg-white/15 text-white border border-white/20'
-                  : 'text-neutral-300 hover:bg-white/5 hover:text-white'
-              }`}
-            >
-              <Clock className="w-4 h-4 text-cyan-300" />
-              <span>প্রজন্মের ইতিহাস</span>
             </button>
 
             <button
