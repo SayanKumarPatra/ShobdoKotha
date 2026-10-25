@@ -1,24 +1,24 @@
-import { initializeApp, getApps, getApp, FirebaseApp } from 'firebase/app';
+import { initializeApp, getApps, getApp } from 'firebase/app';
 import { 
   getAuth, 
   GoogleAuthProvider, 
   signInWithPopup, 
   signOut, 
   onAuthStateChanged,
-  User,
-  Auth 
+  User 
 } from 'firebase/auth';
 import { 
   getFirestore, 
   doc, 
   setDoc, 
+  getDoc, 
   getDocs, 
   collection, 
   query, 
   orderBy, 
   limit, 
-  serverTimestamp,
-  Firestore 
+  deleteDoc, 
+  serverTimestamp 
 } from 'firebase/firestore';
 import { GeneratedAudioItem } from '../types';
 
@@ -32,33 +32,20 @@ export const firebaseConfig = {
   measurementId: "G-8H5QX0W824"
 };
 
-// Safe, defensive initialization to ensure app NEVER shows blank black screen if browser blocks storage
-let app: FirebaseApp | null = null;
-let auth: Auth | null = null;
-let db: Firestore | null = null;
-let googleProvider: GoogleAuthProvider | null = null;
-
-try {
-  app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
-  auth = getAuth(app);
-  db = getFirestore(app);
-  googleProvider = new GoogleAuthProvider();
-  googleProvider.setCustomParameters({ prompt: 'select_account' });
-} catch (err) {
-  console.warn('Firebase safe initialization warning:', err);
-}
-
-export { auth, db, googleProvider };
+// Initialize Firebase
+const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
+export const auth = getAuth(app);
+export const db = getFirestore(app);
+export const googleProvider = new GoogleAuthProvider();
+googleProvider.setCustomParameters({ prompt: 'select_account' });
 
 /**
  * Sign in using Google Popup
  */
-export async function loginWithGoogle(): Promise<User | null> {
-  if (!auth || !googleProvider) {
-    throw new Error('Firebase Auth is not available in this environment');
-  }
+export async function loginWithGoogle(): Promise<User> {
   try {
     const result = await signInWithPopup(auth, googleProvider);
+    // Sync profile to Firestore
     if (result.user) {
       await syncUserProfile(result.user);
     }
@@ -73,7 +60,6 @@ export async function loginWithGoogle(): Promise<User | null> {
  * Sign out current user
  */
 export async function logoutUser(): Promise<void> {
-  if (!auth) return;
   try {
     await signOut(auth);
   } catch (error) {
@@ -86,7 +72,6 @@ export async function logoutUser(): Promise<void> {
  * Sync user profile to Firestore
  */
 export async function syncUserProfile(user: User): Promise<void> {
-  if (!db) return;
   try {
     const userRef = doc(db, 'users', user.uid);
     await setDoc(userRef, {
@@ -97,7 +82,7 @@ export async function syncUserProfile(user: User): Promise<void> {
       lastLogin: serverTimestamp(),
     }, { merge: true });
   } catch (err) {
-    console.warn('Could not sync user profile to Firestore:', err);
+    console.warn('Could not sync user profile to Firestore (offline or rules):', err);
   }
 }
 
@@ -105,7 +90,6 @@ export async function syncUserProfile(user: User): Promise<void> {
  * Save generated audio record to Firestore under user's library
  */
 export async function saveAudioToCloud(userId: string, item: GeneratedAudioItem): Promise<void> {
-  if (!db) return;
   try {
     const audioRef = doc(db, 'users', userId, 'audioHistory', item.id);
     await setDoc(audioRef, {
@@ -129,7 +113,6 @@ export async function saveAudioToCloud(userId: string, item: GeneratedAudioItem)
  * Load user's saved audio records from Firestore
  */
 export async function loadAudioFromCloud(userId: string): Promise<any[]> {
-  if (!db) return [];
   try {
     const historyCol = collection(db, 'users', userId, 'audioHistory');
     const q = query(historyCol, orderBy('createdAt', 'desc'), limit(30));
