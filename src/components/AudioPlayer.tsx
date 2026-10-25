@@ -19,14 +19,11 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
   const [currentTime, setCurrentTime] = useState<number>(0);
   const [duration, setDuration] = useState<number>(item.duration || 0);
   const [isMuted, setIsMuted] = useState<boolean>(false);
-  const [autoplayBlocked, setAutoplayBlocked] = useState<boolean>(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
-
-    setAutoplayBlocked(false);
 
     const onLoadedMetadata = () => {
       if (audio.duration && !isNaN(audio.duration) && audio.duration > 0) {
@@ -43,33 +40,16 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
       setCurrentTime(0);
     };
 
-    const onPlayEvent = () => {
-      setIsPlaying(true);
-      setAutoplayBlocked(false);
-    };
-
-    const onPauseEvent = () => {
-      setIsPlaying(false);
-    };
-
     audio.addEventListener('loadedmetadata', onLoadedMetadata);
     audio.addEventListener('timeupdate', onTimeUpdate);
     audio.addEventListener('ended', onEnded);
-    audio.addEventListener('play', onPlayEvent);
-    audio.addEventListener('pause', onPauseEvent);
 
     if (autoPlay) {
       const playPromise = audio.play();
       if (playPromise !== undefined) {
         playPromise
-          .then(() => {
-            setIsPlaying(true);
-            setAutoplayBlocked(false);
-          })
-          .catch((err) => {
-            console.log('Autoplay prevented by browser:', err);
-            setAutoplayBlocked(true);
-          });
+          .then(() => setIsPlaying(true))
+          .catch((err) => console.log('Autoplay prevented by browser:', err));
       }
     }
 
@@ -77,8 +57,6 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
       audio.removeEventListener('loadedmetadata', onLoadedMetadata);
       audio.removeEventListener('timeupdate', onTimeUpdate);
       audio.removeEventListener('ended', onEnded);
-      audio.removeEventListener('play', onPlayEvent);
-      audio.removeEventListener('pause', onPauseEvent);
       audio.pause();
     };
   }, [item.id, item.audioUrl, autoPlay]);
@@ -92,10 +70,7 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
       setIsPlaying(false);
     } else {
       audio.play()
-        .then(() => {
-          setIsPlaying(true);
-          setAutoplayBlocked(false);
-        })
+        .then(() => setIsPlaying(true))
         .catch((err) => console.warn('Audio playback error:', err));
     }
   };
@@ -111,8 +86,7 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
   const handleDownload = () => {
     const a = document.createElement('a');
     a.href = item.audioUrl;
-    const isWav = item.audioUrl.toLowerCase().includes('.wav');
-    a.download = `shobdokotha_${item.voice.name.toLowerCase()}_${Date.now()}.${isWav ? 'wav' : 'mp3'}`;
+    a.download = `shobdokotha_${item.voice.name.toLowerCase()}_${Date.now()}.wav`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -130,20 +104,7 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
   return (
     <div className={`liquid-glass-card rounded-2xl p-4 sm:p-5 text-white shadow-2xl border border-cyan-500/30 ${className}`}>
       {/* Real audio element */}
-      <audio ref={audioRef} src={item.audioUrl} preload="auto" playsInline />
-
-      {/* Autoplay blocked alert helper */}
-      {autoplayBlocked && !isPlaying && (
-        <div className="mb-3 p-2.5 rounded-xl bg-cyan-500/20 border border-cyan-400/40 flex items-center justify-between text-xs animate-pulse">
-          <span className="text-cyan-200 font-medium">✨ আপনার ভয়েস প্রস্তুত! শুনতে নিচে ক্লিক করুন:</span>
-          <button
-            onClick={togglePlay}
-            className="px-3 py-1 bg-cyan-400 text-black font-semibold rounded-lg text-[11px] hover:bg-cyan-300 transition-colors"
-          >
-            ▶ প্লে করুন
-          </button>
-        </div>
-      )}
+      <audio ref={audioRef} src={item.audioUrl} preload="auto" />
 
       {/* Header Info */}
       <div className="flex items-center justify-between mb-3.5">

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Play, 
+  Square,
   Trash2, 
   Mic, 
   Gauge, 
@@ -9,15 +10,15 @@ import {
   Check, 
   Key, 
   X, 
-  SlidersHorizontal, 
-  ExternalLink, 
-  AlertCircle, 
-  Eye, 
-  EyeOff, 
-  CheckCircle2, 
-  Globe, 
-  Server, 
-  UserCheck 
+  SlidersHorizontal,
+  ExternalLink,
+  AlertCircle,
+  Eye,
+  EyeOff,
+  CheckCircle2,
+  Globe,
+  Server,
+  UserCheck
 } from 'lucide-react';
 import { Logo } from '../Logo';
 import { AudioPlayer } from '../AudioPlayer';
@@ -34,8 +35,8 @@ import {
   getStoredGeminiKey, 
   setStoredGeminiKey, 
   validateTtsInput,
-  stopVoicePreview,
-  unlockAudioContext
+  playRealVoicePreview,
+  stopVoicePreview
 } from '../../services/audioService';
 
 interface HomeViewProps {
@@ -69,6 +70,9 @@ export const HomeView: React.FC<HomeViewProps> = ({
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
   const [generatedAudio, setGeneratedAudio] = useState<GeneratedAudioItem | null>(null);
   
+  // Audition states
+  const [previewingVoiceId, setPreviewingVoiceId] = useState<string | null>(null);
+  const [previewLoading, setPreviewLoading] = useState<boolean>(false);
 
   // Validation
   const [textError, setTextError] = useState<string | null>(null);
@@ -82,7 +86,6 @@ export const HomeView: React.FC<HomeViewProps> = ({
   const [apiKeyInput, setApiKeyInput] = useState<string>('');
   const [hasApiKey, setHasApiKey] = useState<boolean>(false);
   const [showKeyPassword, setShowKeyPassword] = useState<boolean>(false);
-  const [showQuotaNotice, setShowQuotaNotice] = useState<boolean>(false);
 
   useEffect(() => {
     const savedGemini = getStoredGeminiKey();
@@ -110,17 +113,6 @@ export const HomeView: React.FC<HomeViewProps> = ({
     setTextError(null);
   };
 
-  // Category-specific tone mapping
-  const categoryToneMap: Record<VoiceUseCase, number> = {
-    ad: 3,         // নাটকীয় (Expressive) - জোরালো ও এনার্জেটিক বিজ্ঞাপন
-    news: 2,       // গম্ভীর (Deep) - পেশাদার স্টুডিও সংবাদ ও বুলেটিন
-    product: 1,    // উষ্ণ (Warm) - আধুনিক টেক রিভিউ ও শোকেস
-    kids: 3,       // নাটকীয় (Expressive) - চঞ্চল কার্টুন চরিত্র ও রূপকথা
-    woodcutter: 3, // নাটকীয় (Expressive) - আবেগঘন ও নাটকীয় লোকগাথা
-    podcast: 1,    // উষ্ণ (Warm) - আন্তরিক ও প্রাণবন্ত কথকতা
-    general: 0,    // সাধারণ (Normal)
-  };
-
   // Preset selection (Ad, News, Product, Kids, Woodcutter, Podcast)
   const handleSelectPreset = (preset: UseCasePreset) => {
     setSelectedUseCase(preset.id);
@@ -130,9 +122,6 @@ export const HomeView: React.FC<HomeViewProps> = ({
     // Pick matching gender voice for this preset
     const targetVoice = getVoiceForUseCaseAndGender(preset.id, selectedGender);
     setSelectedVoice(targetVoice);
-
-    // Synchronize tone to match this category
-    setToneIndex(categoryToneMap[preset.id] ?? 0);
   };
 
   // Direct Male / Female gender switcher for active category
@@ -140,14 +129,43 @@ export const HomeView: React.FC<HomeViewProps> = ({
     setSelectedGender(gender);
     const targetVoice = getVoiceForUseCaseAndGender(selectedUseCase, gender);
     setSelectedVoice(targetVoice);
+  };
 
-    // Keep tone synchronized to current category
-    setToneIndex(categoryToneMap[selectedUseCase] ?? 0);
+  // Real AI Voice Audition Preview
+  const handlePlayVoicePreview = async (voice: Voice) => {
+    if (previewingVoiceId === voice.id) {
+      stopVoicePreview();
+      setPreviewingVoiceId(null);
+      setPreviewLoading(false);
+      return;
+    }
+
+    setPreviewingVoiceId(voice.id);
+    setPreviewLoading(true);
+
+    const sampleToPlay = voice.sampleTexts[currentLangCode] || voice.sampleTexts.bn;
+
+    await playRealVoicePreview({
+      text: sampleToPlay,
+      voice,
+      languageCode: currentLangCode,
+      useCase: voice.useCase,
+      onStart: () => {
+        setPreviewLoading(false);
+      },
+      onEnd: () => {
+        setPreviewingVoiceId(null);
+        setPreviewLoading(false);
+      },
+      onError: () => {
+        setPreviewingVoiceId(null);
+        setPreviewLoading(false);
+      },
+    });
   };
 
   // Generate Voice for the exact text (up to 25,000 characters)
   const handleGenerate = async () => {
-    unlockAudioContext();
     const validation = validateTtsInput(text);
     if (!validation.isValid) {
       const msg = validation.errorMessage || 'অনুগ্রহ করে বক্সে কিছু টেক্সট লিখুন';
@@ -158,6 +176,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
     setTextError(null);
     setIsGenerating(true);
     stopVoicePreview();
+    setPreviewingVoiceId(null);
 
     try {
       const result = await generateSpeechAudio({
@@ -175,11 +194,8 @@ export const HomeView: React.FC<HomeViewProps> = ({
       if (result.item) {
         setGeneratedAudio(result.item);
       }
-      if (result.quotaExhausted && !hasApiKey) {
-        setShowQuotaNotice(true);
-      }
     } catch {
-      setTextError('ভয়েস তৈরিতে সমস্যা হয়েছে, পুনরায় চেষ্টা করুন');
+      // Graceful fallback
     } finally {
       setIsGenerating(false);
     }
@@ -191,7 +207,6 @@ export const HomeView: React.FC<HomeViewProps> = ({
     if (cleanKey) {
       setStoredGeminiKey(cleanKey);
       setHasApiKey(true);
-      setShowQuotaNotice(false);
     } else {
       setStoredGeminiKey('');
       setHasApiKey(false);
@@ -421,14 +436,9 @@ export const HomeView: React.FC<HomeViewProps> = ({
             <span className="text-[11px] font-semibold text-neutral-300">
               ক্যাটাগরি নির্বাচন করুন:
             </span>
-            <button
-              type="button"
-              onClick={onNavigateToVoices}
-              className="text-[11px] text-cyan-400 hover:text-cyan-300 font-medium flex items-center gap-1 cursor-pointer transition-colors px-2.5 py-0.5 rounded-lg bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/25"
-            >
-              <span>সব মডেলগুলো দেখুন</span>
-              <span className="text-xs">→</span>
-            </button>
+            <span className="text-[10px] text-cyan-300 font-medium">
+              বিজ্ঞাপন · সংবাদ · প্রোডাক্ট · কার্টুন · গল্প · পডকাস্ট
+            </span>
           </div>
 
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-1.5">
@@ -457,6 +467,49 @@ export const HomeView: React.FC<HomeViewProps> = ({
                 </button>
               );
             })}
+          </div>
+        </section>
+
+        {/* MALE / FEMALE GENDER SWITCHER (ছেলে ও মেয়ে উভয় অপশন) */}
+        <section className="mb-3">
+          <div className="liquid-glass-card rounded-2xl p-2.5 flex items-center justify-between border border-cyan-500/20">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-semibold text-white flex items-center gap-1.5">
+                <UserCheck className="w-3.5 h-3.5 text-cyan-400" />
+                <span>ভয়েস জেন্ডার:</span>
+              </span>
+              <span className="text-[10px] text-neutral-400 hidden sm:inline">
+                (প্রতিটি ক্যাটাগরির জন্য ছেলে ও মেয়ে কণ্ঠ)
+              </span>
+            </div>
+
+            <div className="flex items-center gap-1.5 bg-black/40 p-1 rounded-xl border border-white/10">
+              <button
+                type="button"
+                onClick={() => handleSelectGender('male')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+                  selectedGender === 'male'
+                    ? 'bg-gradient-to-r from-cyan-500 to-blue-600 text-white shadow-md shadow-cyan-500/30'
+                    : 'text-neutral-400 hover:text-white'
+                }`}
+              >
+                <span>👦</span>
+                <span>ছেলে (Male)</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleSelectGender('female')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+                  selectedGender === 'female'
+                    ? 'bg-gradient-to-r from-pink-500 to-purple-600 text-white shadow-md shadow-pink-500/30'
+                    : 'text-neutral-400 hover:text-white'
+                }`}
+              >
+                <span>👧</span>
+                <span>মেয়ে (Female)</span>
+              </button>
+            </div>
           </div>
         </section>
 
@@ -517,142 +570,35 @@ export const HomeView: React.FC<HomeViewProps> = ({
             </div>
           </div>
 
-          {/* Voice Controls: Language & Gender Selector side by side, plus Model Dropdown */}
-          <div className="space-y-2 mb-2.5">
-            {/* Row 1: Language and Gender Selector side by side */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              {/* Language Selection (যেখানে বাংলা চেঞ্জ করা যায়) */}
-              <div className="relative">
-                <div className="flex items-center justify-between mb-1">
-                  <label className="text-[10px] text-neutral-400 font-medium flex items-center gap-1">
-                    <Globe className="w-3 h-3 text-cyan-400" />
-                    <span>ভাষা (Language):</span>
-                  </label>
-                  <span className="text-[10px] text-cyan-300 font-mono">
-                    {currentLangCode === 'bn' ? 'বাংলা' : currentLangCode === 'hi' ? 'हिन्दी' : 'English'}
-                  </span>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsLangDropdownOpen(!isLangDropdownOpen);
-                    setIsVoiceDropdownOpen(false);
-                  }}
-                  className="w-full liquid-glass-button h-10 px-3 rounded-xl flex items-center justify-between text-xs text-neutral-200 border border-white/10 hover:border-cyan-400/30"
-                >
-                  <div className="flex items-center gap-1.5 truncate">
-                    <span>{SUPPORTED_LANGUAGES.find(l => l.code === currentLangCode)?.flag}</span>
-                    <span className="truncate font-medium">{selectedLanguage}</span>
-                  </div>
-                  <ChevronDown className={`w-3.5 h-3.5 text-neutral-400 shrink-0 transition-transform ${isLangDropdownOpen ? 'rotate-180' : ''}`} />
-                </button>
-
-                {isLangDropdownOpen && (
-                  <div className="absolute top-16 left-0 right-0 z-30 liquid-glass-card rounded-xl p-1.5 max-h-56 overflow-y-auto space-y-1 shadow-2xl border border-cyan-500/30">
-                    {SUPPORTED_LANGUAGES.map((lang) => (
-                      <button
-                        key={lang.code}
-                        type="button"
-                        onClick={() => handleSelectLanguage(lang)}
-                        className={`w-full flex items-center justify-between p-2 rounded-lg text-left text-xs transition-colors cursor-pointer ${
-                          currentLangCode === lang.code ? 'bg-cyan-500/20 text-white font-semibold border border-cyan-400/30' : 'text-neutral-300 hover:bg-white/5'
-                        }`}
-                      >
-                        <span className="flex items-center gap-2 truncate">
-                          <span>{lang.flag}</span>
-                          <span className="truncate">{lang.nativeName}</span>
-                        </span>
-                        {currentLangCode === lang.code && <Check className="w-3.5 h-3.5 text-cyan-400 shrink-0" />}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {/* Voice Gender Switcher (ছেলে ও মেয়ে অপশন - সরাসরি ভাষা পরিবর্তনের পাশে) */}
-              <div>
-                <div className="flex items-center justify-between mb-1">
-                  <label className="text-[10px] text-neutral-400 font-medium flex items-center gap-1">
-                    <UserCheck className="w-3 h-3 text-cyan-400" />
-                    <span>কণ্ঠের ধরন (Voice Gender):</span>
-                  </label>
-                  <span className="text-[10px] text-cyan-300 font-medium">
-                    {selectedGender === 'male' ? 'ছেলে কণ্ঠ' : 'মেয়ে কণ্ঠ'}
-                  </span>
-                </div>
-                <div className="grid grid-cols-2 gap-1 bg-black/50 p-1 rounded-xl border border-white/10 h-10 items-center">
-                  <button
-                    type="button"
-                    onClick={() => handleSelectGender('male')}
-                    className={`h-full rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
-                      selectedGender === 'male'
-                        ? 'bg-gradient-to-r from-cyan-500 to-blue-600 text-white shadow-md shadow-cyan-500/30 font-bold border border-cyan-400/50'
-                        : 'text-neutral-400 hover:text-white'
-                    }`}
-                  >
-                    <span>👦</span>
-                    <span>ছেলে (Male)</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => handleSelectGender('female')}
-                    className={`h-full rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
-                      selectedGender === 'female'
-                        ? 'bg-gradient-to-r from-pink-500 to-purple-600 text-white shadow-md shadow-pink-500/30 font-bold border border-pink-400/50'
-                        : 'text-neutral-400 hover:text-white'
-                    }`}
-                  >
-                    <span>👧</span>
-                    <span>মেয়ে (Female)</span>
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            {/* Row 2: Selected Voice Model for this category + dropdown */}
+          {/* Voice & Language Dropdowns */}
+          <div className="grid grid-cols-2 gap-2 mb-2.5">
+            {/* Voice Dropdown */}
             <div className="relative">
-              <div className="flex items-center justify-between mb-1">
-                <label className="text-[10px] text-neutral-400 font-medium flex items-center gap-1">
-                  <Mic className="w-3 h-3 text-cyan-400" />
-                  <span>কণ্ঠ মডেল (Active Voice Model):</span>
-                </label>
-                <span className="text-[10px] text-neutral-400 truncate">
-                  ক্যাটাগরি: <span className="text-cyan-300 font-medium">{USE_CASE_PRESETS.find(p => p.id === selectedUseCase)?.title || 'ক্যাটাগরি'}</span>
-                </span>
-              </div>
               <button
                 type="button"
                 onClick={() => {
                   setIsVoiceDropdownOpen(!isVoiceDropdownOpen);
                   setIsLangDropdownOpen(false);
                 }}
-                className="w-full liquid-glass-button h-10 px-3 rounded-xl flex items-center justify-between text-xs text-neutral-200 border border-white/10 hover:border-cyan-400/30"
+                className="w-full liquid-glass-button h-10 px-2.5 rounded-xl flex items-center justify-between text-xs text-neutral-200"
               >
-                <div className="flex items-center gap-2 truncate">
-                  <span className="text-base">{selectedVoice.avatar}</span>
-                  <span className="font-semibold text-white truncate">{selectedVoice.bengaliName}</span>
-                  <span className="text-neutral-400 truncate">({selectedVoice.name})</span>
-                  <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium shrink-0 ${
-                    selectedVoice.gender === 'male'
-                      ? 'bg-cyan-500/15 text-cyan-300 border border-cyan-400/25'
-                      : 'bg-pink-500/15 text-pink-300 border border-pink-400/25'
-                  }`}>
-                    {selectedVoice.useCaseLabel}
-                  </span>
+                <div className="flex items-center gap-1.5 truncate">
+                  <Mic className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                  <span className="truncate">{selectedVoice.bengaliName} ({selectedVoice.gender === 'male' ? 'ছেলে' : 'মেয়ে'})</span>
                 </div>
                 <ChevronDown className={`w-3.5 h-3.5 text-neutral-400 shrink-0 transition-transform ${isVoiceDropdownOpen ? 'rotate-180' : ''}`} />
               </button>
 
               {isVoiceDropdownOpen && (
-                <div className="absolute top-16 left-0 right-0 z-30 liquid-glass-card rounded-xl p-1.5 max-h-64 overflow-y-auto space-y-1 shadow-2xl border border-cyan-500/30">
-                  {VOICES_CATALOG.filter(v => v.gender === selectedGender).map((v) => (
+                <div className="absolute top-11 left-0 right-0 z-30 liquid-glass-card rounded-xl p-1.5 max-h-64 overflow-y-auto space-y-1 shadow-2xl border border-cyan-500/30">
+                  {VOICES_CATALOG.map((v) => (
                     <button
                       key={v.id}
                       type="button"
                       onClick={() => {
                         setSelectedVoice(v);
                         setSelectedUseCase(v.useCase);
+                        setSelectedGender(v.gender);
                         setIsVoiceDropdownOpen(false);
                       }}
                       className={`w-full flex items-center justify-between p-2 rounded-lg text-left text-xs transition-colors cursor-pointer ${
@@ -673,18 +619,43 @@ export const HomeView: React.FC<HomeViewProps> = ({
               )}
             </div>
 
-            {/* Dynamic Category Tone Strip */}
-            <div className="p-2 rounded-xl bg-white/5 border border-white/10 text-[11px] flex items-center justify-between">
-              <span className="text-neutral-300 truncate">
-                <strong className="text-cyan-300">{selectedVoice.bengaliName} ({selectedGender === 'male' ? 'ছেলে' : 'মেয়ে'})</strong>: {selectedVoice.bengaliDescription}
-              </span>
-              <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full shrink-0 ml-2 ${
-                selectedGender === 'male'
-                  ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-400/30'
-                  : 'bg-pink-500/20 text-pink-300 border border-pink-400/30'
-              }`}>
-                {toneOptions[toneIndex]?.label.split(' ')[0]} টোন
-              </span>
+            {/* Language Dropdown */}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsLangDropdownOpen(!isLangDropdownOpen);
+                  setIsVoiceDropdownOpen(false);
+                }}
+                className="w-full liquid-glass-button h-10 px-2.5 rounded-xl flex items-center justify-between text-xs text-neutral-200"
+              >
+                <div className="flex items-center gap-1.5 truncate">
+                  <Globe className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                  <span className="truncate">{selectedLanguage}</span>
+                </div>
+                <ChevronDown className={`w-3.5 h-3.5 text-neutral-400 shrink-0 transition-transform ${isLangDropdownOpen ? 'rotate-180' : ''}`} />
+              </button>
+
+              {isLangDropdownOpen && (
+                <div className="absolute top-11 left-0 right-0 z-30 liquid-glass-card rounded-xl p-1.5 max-h-56 overflow-y-auto space-y-1 shadow-2xl border border-cyan-500/30">
+                  {SUPPORTED_LANGUAGES.map((lang) => (
+                    <button
+                      key={lang.code}
+                      type="button"
+                      onClick={() => handleSelectLanguage(lang)}
+                      className={`w-full flex items-center justify-between p-2 rounded-lg text-left text-xs transition-colors cursor-pointer ${
+                        currentLangCode === lang.code ? 'bg-cyan-500/20 text-white font-semibold border border-cyan-400/30' : 'text-neutral-300 hover:bg-white/5'
+                      }`}
+                    >
+                      <span className="flex items-center gap-2 truncate">
+                        <span>{lang.flag}</span>
+                        <span className="truncate">{lang.nativeName}</span>
+                      </span>
+                      {currentLangCode === lang.code && <Check className="w-3.5 h-3.5 text-cyan-400 shrink-0" />}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
 
@@ -764,37 +735,76 @@ export const HomeView: React.FC<HomeViewProps> = ({
               />
             </div>
           )}
+        </section>
 
-          {/* Quota Exhaustion Helper Banner */}
-          {showQuotaNotice && !hasApiKey && (
-            <div className="mt-3 p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/25 flex items-start justify-between gap-3 animate-fade-in text-xs">
-              <div className="flex items-start gap-2.5 text-amber-200/90 leading-relaxed">
-                <AlertCircle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
-                <div>
-                  <p className="font-semibold text-amber-300">শেয়ার্ড কোটা সীমাবদ্ধ — ফরম্যান্ট-প্রিজার্ভড ইঞ্জিন সক্রিয়</p>
-                  <p className="text-[11px] text-neutral-300 mt-1">
-                    আপনার অডিও সফলভাবে ফরম্যান্ট-সংরক্ষিত ন্যাচারাল ইঞ্জিনের মাধ্যমে প্রস্তুত হয়েছে। আনলিমিটেড স্টুডিও কোয়ালিটির জন্য যেকোনো সময় বিনামূল্যে নিজস্ব Gemini API Key যুক্ত করতে পারেন।
-                  </p>
+        {/* Real AI Voice Audition Samples */}
+        <section className="mb-4">
+          <div className="flex items-center justify-between mb-2">
+            <h2 className="text-xs font-semibold text-neutral-300 flex items-center gap-1.5">
+              <span>মডেলের নমুনা অডিও ({selectedGender === 'male' ? 'ছেলে' : 'মেয়ে'} কণ্ঠ):</span>
+            </h2>
+            <button
+              onClick={onNavigateToVoices}
+              className="text-[11px] text-cyan-400 hover:text-cyan-300 cursor-pointer"
+            >
+              সবগুলো মডেল লাইব্রেরি →
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            {VOICES_CATALOG.filter(v => v.gender === selectedGender).slice(0, 4).map((voice) => {
+              const isSelected = selectedVoice.id === voice.id;
+              const isPlayingPreview = previewingVoiceId === voice.id;
+
+              return (
+                <div
+                  key={voice.id}
+                  onClick={() => {
+                    setSelectedVoice(voice);
+                    setSelectedUseCase(voice.useCase);
+                    setSelectedGender(voice.gender);
+                  }}
+                  className={`liquid-glass-card rounded-xl p-2.5 flex items-center justify-between cursor-pointer transition-all ${
+                    isSelected ? 'border-cyan-400/50 bg-cyan-950/20 shadow-[0_0_15px_rgba(56,189,248,0.15)]' : 'hover:border-white/20'
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <span className="text-lg">{voice.avatar}</span>
+                    <div className="min-w-0">
+                      <p className="font-semibold text-xs text-white truncate">
+                        {voice.bengaliName} ({voice.name})
+                      </p>
+                      <p className="text-[10px] text-neutral-400 truncate">
+                        {voice.useCaseLabel} · {voice.gender === 'male' ? 'ছেলে' : 'মেয়ে'}
+                      </p>
+                    </div>
+                  </div>
+
                   <button
                     type="button"
-                    onClick={() => setShowKeyModal(true)}
-                    className="mt-2.5 px-3 py-1 bg-amber-400/20 hover:bg-amber-400/30 border border-amber-400/40 rounded-lg text-amber-200 font-medium cursor-pointer transition-colors inline-flex items-center gap-1.5"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handlePlayVoicePreview(voice);
+                    }}
+                    className={`w-8 h-8 rounded-lg liquid-glass-button flex items-center justify-center text-white shrink-0 cursor-pointer transition-all ${
+                      isPlayingPreview ? 'bg-cyan-500/30 border-cyan-400 shadow-[0_0_10px_rgba(56,189,248,0.4)]' : 'hover:border-cyan-400/40'
+                    }`}
+                    title={isPlayingPreview ? 'থামুন' : 'নমুনা শুনুন'}
                   >
-                    <Key className="w-3 h-3 text-amber-300" />
-                    <span>ফ্রি Gemini API Key সেট করুন</span>
+                    {isPlayingPreview ? (
+                      previewLoading ? (
+                        <div className="w-3 h-3 border-2 border-white/30 border-t-cyan-300 rounded-full animate-spin" />
+                      ) : (
+                        <Square className="w-3 h-3 fill-cyan-300 text-cyan-300" />
+                      )
+                    ) : (
+                      <Play className="w-3 h-3 fill-white text-white ml-0.5" />
+                    )}
                   </button>
                 </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowQuotaNotice(false)}
-                className="p-1 rounded-lg text-neutral-400 hover:text-white cursor-pointer"
-                title="বন্ধ করুন"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            </div>
-          )}
+              );
+            })}
+          </div>
         </section>
 
       </div>
