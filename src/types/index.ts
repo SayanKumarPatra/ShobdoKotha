@@ -6,36 +6,46 @@ export type VoiceCategory =
   | 'friendly'
   | 'story';
 
+export type VoiceGender = 'male' | 'female';
+
 export type VoiceUseCase = 
   | 'ad'          // বিজ্ঞাপন / কমার্শিয়াল
-  | 'woodcutter'  // কাঠুরের গল্প ও লোকগাথা
   | 'news'        // সংবাদ ও উপস্থাপনা
-  | 'podcast'     // পডকাস্ট ও বিনোদন
-  | 'kids'        // শিশুতোষ ও রূপকথা
+  | 'product'     // প্রোডাক্ট ও ই-কমার্স
+  | 'kids'        // শিশুদের কার্টুন ও রূপকথা
+  | 'woodcutter'  // কাঠুরের গল্প ও লোকগাথা
+  | 'podcast'     // পডকাস্ট ও আরজে
   | 'general';    // সাধারণ কথকতা
 
 export interface Voice {
   id: string;
   name: string;
   bengaliName: string;
-  gender: 'male' | 'female' | 'child';
+  hindiName?: string;
+  englishName?: string;
+  gender: VoiceGender;
   category: VoiceCategory;
   categoryLabel: string;
   useCase: VoiceUseCase;
   useCaseLabel: string;
-  language: string;
-  langCode: string;
   avatar: string;
   description: string;
   bengaliDescription: string;
-  sampleText: string;
+  sampleTexts: {
+    bn: string;
+    hi: string;
+    en: string;
+  };
   pitch: number;
   rate: number;
   isPopular?: boolean;
 }
 
+export type SupportedLanguageCode = 'bn' | 'hi' | 'en';
+
 export interface LanguageOption {
-  code: string;
+  code: SupportedLanguageCode;
+  fullCode: string;
   name: string;
   nativeName: string;
   flag: string;
@@ -46,6 +56,7 @@ export interface GeneratedAudioItem {
   text: string;
   voice: Voice;
   language: string;
+  languageCode: SupportedLanguageCode;
   speed: number;
   tone: string;
   useCase?: VoiceUseCase;
@@ -53,6 +64,7 @@ export interface GeneratedAudioItem {
   duration: number; // in seconds
   audioUrl: string;
   blobSize?: number;
+  engine?: 'gemini' | 'browser' | 'neural' | 'edge';
 }
 
-export type ActiveTab = 'home' | 'voices' | 'history' | 'account';
+export type ActiveTab = 'home' | 'voices' | 'account';

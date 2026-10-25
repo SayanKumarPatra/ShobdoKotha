@@ -1,145 +1,294 @@
-import { GeneratedAudioItem, Voice, VoiceUseCase } from '../types';
+import { GeneratedAudioItem, Voice, VoiceUseCase, SupportedLanguageCode, VoiceGender } from '../types';
+
+const GEMINI_KEY_STORAGE = 'shobdokotha_gemini_key';
 
 /**
- * Generate real speech audio via server-side Gemini TTS API
+ * Retrieves the stored Gemini API key (persists permanently in browser)
+ */
+export function getStoredGeminiKey(): string | null {
+  try {
+    const key = localStorage.getItem(GEMINI_KEY_STORAGE) || '';
+    return key.trim() || null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Stores the Gemini API key permanently
+ */
+export function setStoredGeminiKey(key: string): void {
+  try {
+    const trimmed = key.trim();
+    if (trimmed) {
+      localStorage.setItem(GEMINI_KEY_STORAGE, trimmed);
+    } else {
+      localStorage.removeItem(GEMINI_KEY_STORAGE);
+    }
+  } catch (e) {
+    console.warn('Could not store Gemini key in localStorage', e);
+  }
+}
+
+/**
+ * Validates text input before speech generation (Supports up to 25,000 characters)
+ */
+export function validateTtsInput(text: string): { isValid: boolean; errorMessage?: string } {
+  const trimmed = text ? text.trim() : '';
+  if (!trimmed) {
+    return {
+      isValid: false,
+      errorMessage: 'অনুগ্রহ করে কিছু টেক্সট লিখুন। টেক্সট ছাড়া ভয়েস তৈরি করা সম্ভব নয়।',
+    };
+  }
+
+  if (trimmed.length > 25000) {
+    return {
+      isValid: false,
+      errorMessage: 'টেক্সটের দৈর্ঘ্য অনেক বেশি (সর্বোচ্চ ২৫,০০০ অক্ষর অনুমোদিত)। অনুগ্রহ করে সংক্ষেপ করুন।',
+    };
+  }
+
+  return { isValid: true };
+}
+
+// Client-side cache for voice preview blobs
+const previewBlobCache = new Map<string, string>();
+let currentPreviewAudio: HTMLAudioElement | null = null;
+
+/**
+ * Unlocks browser audio context to ensure subsequent playback succeeds
+ */
+export function unlockAudioContext(): void {
+  if (typeof window !== 'undefined') {
+    const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+    if (AudioContextClass) {
+      try {
+        const ctx = new AudioContextClass();
+        if (ctx.state === 'suspended') {
+          ctx.resume().catch(() => {});
+        }
+      } catch {
+        // Ignore
+      }
+    }
+  }
+}
+
+/**
+ * Plays a real AI voice audition clip directly using real audio bytes
+ */
+export async function playRealVoicePreview({
+  text,
+  voice,
+  languageCode = 'bn',
+  useCase = 'general',
+  onStart,
+  onEnd,
+  onError,
+}: {
+  text: string;
+  voice: Voice;
+  languageCode: SupportedLanguageCode;
+  useCase?: VoiceUseCase;
+  onStart?: () => void;
+  onEnd?: () => void;
+  onError?: (err: Error) => void;
+}): Promise<void> {
+  unlockAudioContext();
+
+  if (currentPreviewAudio) {
+    currentPreviewAudio.pause();
+    currentPreviewAudio.currentTime = 0;
+    currentPreviewAudio = null;
+  }
+
+  const cleanText = text.trim();
+  const cacheKey = `${languageCode}_${useCase}_${voice.id}_${cleanText}`;
+
+  try {
+    let audioUrl = previewBlobCache.get(cacheKey);
+
+    if (!audioUrl) {
+      const effectiveKey = getStoredGeminiKey();
+      const response = await fetch('/api/tts/generate', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          text: cleanText,
+          voiceId: voice.id,
+          useCase: useCase || voice.useCase || 'general',
+          language: languageCode,
+          gender: voice.gender,
+          geminiApiKey: effectiveKey || undefined,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      const blob = await response.blob();
+      audioUrl = URL.createObjectURL(blob);
+      previewBlobCache.set(cacheKey, audioUrl);
+    }
+
+    const audio = new Audio(audioUrl);
+    currentPreviewAudio = audio;
+
+    audio.onplay = () => {
+      if (onStart) onStart();
+    };
+
+    audio.onended = () => {
+      if (currentPreviewAudio === audio) {
+        currentPreviewAudio = null;
+      }
+      if (onEnd) onEnd();
+    };
+
+    audio.onerror = () => {
+      if (currentPreviewAudio === audio) {
+        currentPreviewAudio = null;
+      }
+      if (onError) onError(new Error('অডিও প্লে করতে ব্যর্থ হয়েছে'));
+    };
+
+    try {
+      await audio.play();
+    } catch {
+      // If autoplay was blocked, call onStart so UI shows it's ready, or handle gracefully
+      if (onStart) onStart();
+    }
+  } catch (err: any) {
+    if (onError) onError(err);
+  }
+}
+
+/**
+ * Quick speaker sound test using real voice audition
+ */
+export function playAudiblePreview(text: string, voice?: Voice): void {
+  const defaultVoice = voice || {
+    id: 'news-female-ananya',
+    name: 'Ananya',
+    bengaliName: 'অনন্যা',
+    gender: 'female',
+    category: 'female',
+    categoryLabel: 'নারী কণ্ঠ',
+    useCase: 'news',
+    useCaseLabel: 'সংবাদ ও বুলেটিন',
+    avatar: '👩‍💼',
+    description: 'Articulate news voice',
+    bengaliDescription: 'পেশাদার সংবাদ উপস্থাপিকা',
+    sampleTexts: { bn: text, hi: text, en: text },
+    pitch: 1.05,
+    rate: 1.0,
+  } as Voice;
+
+  playRealVoicePreview({
+    text: text || 'শব্দকথা স্টুডিওতে আপনার সাউন্ড সফলভাবে কাজ করছে।',
+    voice: defaultVoice,
+    languageCode: 'bn',
+    useCase: 'news',
+  });
+}
+
+/**
+ * Stops any active preview audio
+ */
+export function stopVoicePreview(): void {
+  if (currentPreviewAudio) {
+    currentPreviewAudio.pause();
+    currentPreviewAudio.currentTime = 0;
+    currentPreviewAudio = null;
+  }
+}
+
+export interface SpeechGenerationResult {
+  item: GeneratedAudioItem;
+  isCustomKeyUsed: boolean;
+  quotaExhausted?: boolean;
+  engineUsed?: string;
+}
+
+/**
+ * Generate speech audio: Always delivers real WAV blob URL
  */
 export async function generateSpeechAudio({
   text,
   voice,
-  speed,
-  tone,
+  speed = 1.0,
+  tone = 'সাধারণ',
   useCase = 'general',
-  cartesiaApiKey,
+  languageCode = 'bn',
+  languageLabel = 'বাংলা (Bengali)',
+  gender = 'male',
+  geminiApiKey,
 }: {
   text: string;
   voice: Voice;
   speed: number;
   tone: string;
   useCase?: VoiceUseCase;
-  cartesiaApiKey?: string;
-}): Promise<GeneratedAudioItem> {
+  languageCode: SupportedLanguageCode;
+  languageLabel?: string;
+  gender?: VoiceGender;
+  geminiApiKey?: string;
+}): Promise<SpeechGenerationResult> {
   const cleanText = text.trim();
+  const effectiveKey = geminiApiKey || getStoredGeminiKey();
 
-  // 1. Call server-side TTS endpoint which uses Google Gemini Flash Lite TTS
-  try {
-    const key = cartesiaApiKey || localStorage.getItem('shobdokotha_cartesia_key') || undefined;
-    const response = await fetch('/api/tts/generate', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        text: cleanText,
-        voiceId: voice.id,
-        useCase: useCase || voice.useCase || 'general',
-        language: voice.langCode,
-        speed,
-        cartesiaKey: key,
-      }),
-    });
-
-    if (response.ok) {
-      const contentType = response.headers.get('Content-Type') || '';
-      if (contentType.includes('audio')) {
-        const blob = await response.blob();
-        const audioUrl = URL.createObjectURL(blob);
-        
-        // Accurate duration calculation based on clean text
-        const wordCount = cleanText.split(/\s+/).length || 1;
-        const durationSec = Math.max(2.5, Math.round((wordCount * 0.42 + cleanText.length * 0.035) / speed));
-
-        const item: GeneratedAudioItem = {
-          id: 'gen_' + Date.now(),
-          text: cleanText,
-          voice,
-          language: voice.language,
-          speed,
-          tone,
-          useCase,
-          createdAt: new Date().toISOString(),
-          duration: durationSec,
-          audioUrl,
-          blobSize: blob.size,
-        };
-
-        saveToHistory(item);
-        return item;
-      }
-    }
-  } catch (err) {
-    console.warn('Server TTS fetch failed, checking browser speech engine:', err);
-  }
-
-  // 2. Browser Native SpeechSynthesis (produces REAL human voice instead of robotic drone)
-  if ('speechSynthesis' in window) {
-    window.speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(cleanText);
-    utterance.rate = speed;
-    utterance.pitch = voice.pitch;
-    utterance.lang = voice.langCode;
-
-    const voices = window.speechSynthesis.getVoices();
-    const matched = voices.find(v => v.lang.startsWith(voice.langCode.split('-')[0])) || voices[0];
-    if (matched) utterance.voice = matched;
-
-    // Create an audio placeholder with native utterance binding
-    const wordCount = cleanText.split(/\s+/).length || 1;
-    const durationSec = Math.max(2.5, Math.round((wordCount * 0.42) / speed));
-
-    // Synthesize silent carrier WAV so audio element timeline scrubbing works while speech plays
-    const audioUrl = createSilentCarrierWav(durationSec);
-
-    const item: GeneratedAudioItem = {
-      id: 'gen_' + Date.now(),
+  const response = await fetch('/api/tts/generate', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
       text: cleanText,
-      voice,
-      language: voice.language,
+      voiceId: voice.id,
+      useCase: useCase || voice.useCase || 'general',
+      language: languageCode,
+      gender: gender || voice.gender,
       speed,
-      tone,
-      useCase,
-      createdAt: new Date().toISOString(),
-      duration: durationSec,
-      audioUrl,
-    };
+      geminiApiKey: effectiveKey || undefined,
+    }),
+  });
 
-    saveToHistory(item);
-    return item;
-  }
+  const engineUsed = response.headers.get('X-Voice-Engine') || 'gemini-tts';
+  const quotaExhausted = response.headers.get('X-Quota-Exhausted') === 'true';
 
-  throw new Error('No voice synthesis engine available');
-}
+  const blob = await response.blob();
+  const audioUrl = URL.createObjectURL(blob);
+  
+  const wordCount = cleanText.split(/\s+/).length || 1;
+  const durationSec = Math.max(3, Math.round((wordCount * 0.45 + cleanText.length * 0.035) / speed));
 
-/**
- * Creates a silent RIFF WAV buffer of given duration
- */
-function createSilentCarrierWav(durationSeconds: number): string {
-  const sampleRate = 22050;
-  const numSamples = Math.floor(sampleRate * durationSeconds);
-  const buffer = new ArrayBuffer(44 + numSamples * 2);
-  const view = new DataView(buffer);
+  const item: GeneratedAudioItem = {
+    id: 'gemini_' + Date.now(),
+    text: cleanText,
+    voice,
+    language: languageLabel || 'বাংলা (Bengali)',
+    languageCode,
+    speed,
+    tone,
+    useCase,
+    createdAt: new Date().toISOString(),
+    duration: durationSec,
+    audioUrl,
+    blobSize: blob.size,
+    engine: engineUsed === 'gemini-tts' ? 'gemini' : 'neural',
+  };
 
-  function writeString(offset: number, str: string) {
-    for (let i = 0; i < str.length; i++) {
-      view.setUint8(offset + i, str.charCodeAt(i));
-    }
-  }
-
-  writeString(0, 'RIFF');
-  view.setUint32(4, 36 + numSamples * 2, true);
-  writeString(8, 'WAVE');
-  writeString(12, 'fmt ');
-  view.setUint32(16, 16, true);
-  view.setUint16(20, 1, true); // PCM
-  view.setUint16(22, 1, true); // Mono
-  view.setUint32(24, sampleRate, true);
-  view.setUint32(28, sampleRate * 2, true);
-  view.setUint16(32, 2, true);
-  view.setUint16(34, 16, true);
-  writeString(36, 'data');
-  view.setUint32(40, numSamples * 2, true);
-
-  const blob = new Blob([buffer], { type: 'audio/wav' });
-  return URL.createObjectURL(blob);
+  saveToHistory(item);
+  return { 
+    item, 
+    isCustomKeyUsed: Boolean(effectiveKey),
+    quotaExhausted,
+    engineUsed
+  };
 }
 
 const HISTORY_STORAGE_KEY = 'shobdokotha_audio_history';
@@ -160,6 +309,14 @@ export function saveToHistory(item: GeneratedAudioItem): void {
     const history = getAudioHistory();
     const updated = [item, ...history.filter(h => h.id !== item.id)].slice(0, 30);
     localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(updated));
+
+    import('./firebase').then(({ auth, saveAudioToCloud }) => {
+      if (auth && auth.currentUser) {
+        saveAudioToCloud(auth.currentUser.uid, item).catch((err) => {
+          console.debug('Firestore sync failed:', err);
+        });
+      }
+    }).catch(() => {});
   } catch (e) {
     console.error('Failed to save to history', e);
   }

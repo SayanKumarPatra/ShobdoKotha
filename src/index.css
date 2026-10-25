@@ -35,41 +35,6 @@
 /* APPLE LIQUID WATER GLASSMORPHISM (iOS Pure Liquid Glass) */
 /* ======================================================== */
 
-/* Deep Realistic Liquid Water Refraction Canvas & Radial-Gradient Mask */
-.liquid-water-canvas {
-  position: relative;
-}
-
-.liquid-water-canvas::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  backdrop-filter: saturate(180%) blur(20px);
-  -webkit-backdrop-filter: saturate(180%) blur(20px);
-  mask-image: radial-gradient(ellipse 85% 75% at 50% 35%, black 40%, rgba(0, 0, 0, 0.6) 70%, transparent 100%);
-  -webkit-mask-image: radial-gradient(ellipse 85% 75% at 50% 35%, black 40%, rgba(0, 0, 0, 0.6) 70%, transparent 100%);
-  background: radial-gradient(ellipse 80% 55% at 50% 32%, rgba(56, 189, 248, 0.12) 0%, rgba(14, 165, 233, 0.05) 50%, transparent 80%);
-  pointer-events: none;
-  z-index: 0;
-}
-
-/* Primary Glass Container Deep Liquid Water Refraction Layer */
-.liquid-water-refraction {
-  position: relative;
-}
-
-.liquid-water-refraction::before {
-  content: '';
-  position: absolute;
-  inset: -16px;
-  backdrop-filter: saturate(180%) blur(20px);
-  -webkit-backdrop-filter: saturate(180%) blur(20px);
-  mask-image: radial-gradient(ellipse 92% 85% at 50% 42%, black 45%, rgba(0, 0, 0, 0.5) 80%, transparent 100%);
-  -webkit-mask-image: radial-gradient(ellipse 92% 85% at 50% 42%, black 45%, rgba(0, 0, 0, 0.5) 80%, transparent 100%);
-  background: radial-gradient(ellipse 85% 65% at 50% 35%, rgba(56, 189, 248, 0.15) 0%, rgba(2, 132, 199, 0.06) 55%, transparent 85%);
-  pointer-events: none;
-  z-index: -1;
-}
 
 /* Glowing Liquid Water Floating Bottom Bar */
 .apple-liquid-water-nav {

@@ -1,9 +1,8 @@
 import React, { useState } from 'react';
 import { VOICES_CATALOG, SUPPORTED_LANGUAGES } from './data/voices';
-import { ActiveTab, Voice, VoiceUseCase } from './types';
+import { ActiveTab, Voice, VoiceUseCase, SupportedLanguageCode } from './types';
 import { HomeView } from './components/views/HomeView';
 import { VoicesView } from './components/views/VoicesView';
-import { HistoryView } from './components/views/HistoryView';
 import { AccountView } from './components/views/AccountView';
 import { BottomNavigation } from './components/BottomNavigation';
 import { MenuDrawer } from './components/MenuDrawer';
@@ -14,16 +13,28 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<ActiveTab>('home');
   const [selectedVoice, setSelectedVoice] = useState<Voice>(VOICES_CATALOG[0]);
   const [selectedLanguage, setSelectedLanguage] = useState<string>(SUPPORTED_LANGUAGES[0].nativeName);
-  const [selectedUseCase, setSelectedUseCase] = useState<VoiceUseCase>('general');
+  const [selectedUseCase, setSelectedUseCase] = useState<VoiceUseCase>('ad');
   const [isMenuOpen, setIsMenuOpen] = useState<boolean>(false);
 
+  const currentLangCode: SupportedLanguageCode = selectedLanguage.toLowerCase().includes('hi')
+    ? 'hi'
+    : selectedLanguage.toLowerCase().includes('en')
+      ? 'en'
+      : 'bn';
+
   return (
-    <div className="min-h-screen bg-black text-white relative selection:bg-cyan-500/30 selection:text-cyan-100 flex flex-col antialiased">
+    <div className="min-h-screen bg-black text-white relative selection:bg-cyan-500/30 selection:text-cyan-100 flex flex-col antialiased overflow-x-hidden">
       
-      {/* Background ambient liquid refraction spots */}
-      <div className="fixed inset-0 pointer-events-none -z-10 overflow-hidden">
-        <div className="absolute top-1/4 left-1/3 w-[500px] h-[500px] bg-gradient-to-br from-cyan-950/20 via-blue-950/10 to-transparent rounded-full blur-[120px]" />
-        <div className="absolute bottom-1/4 right-1/4 w-[450px] h-[450px] bg-gradient-to-tl from-indigo-950/20 via-purple-950/10 to-transparent rounded-full blur-[140px]" />
+      {/* Liquid Glass Background Ambient Glows & Shiny Blue Caustics */}
+      <div className="fixed inset-0 pointer-events-none z-0 overflow-hidden">
+        {/* Top luminous cyan/blue ambient orb */}
+        <div className="absolute -top-36 left-1/2 -translate-x-1/2 w-[650px] h-[450px] bg-gradient-to-b from-cyan-500/18 via-blue-600/12 to-transparent rounded-full blur-[110px]" />
+        
+        {/* Center-left iridescent indigo glow */}
+        <div className="absolute top-1/3 -left-28 w-[380px] h-[380px] bg-blue-600/10 rounded-full blur-[120px]" />
+
+        {/* Bottom-right ocean water caustic reflection */}
+        <div className="absolute -bottom-24 right-5 w-[480px] h-[360px] bg-cyan-600/12 rounded-full blur-[110px]" />
       </div>
 
       {/* Slide-over menu for mobile */}
@@ -34,20 +45,19 @@ export default function App() {
         setActiveTab={setActiveTab}
       />
 
-      <div className="flex-1 flex w-full">
+      <div className="flex-1 flex w-full relative z-10">
         {/* Left Desktop Sidebar (automatically shown on desktop) */}
         <DesktopSidebar activeTab={activeTab} setActiveTab={setActiveTab} />
 
-        {/* Main Content Area: Naturally responsive for all devices */}
-        <main className="flex-1 flex flex-col min-w-0 min-h-screen liquid-water-canvas">
+        {/* Main Content Area */}
+        <main className="flex-1 flex flex-col min-w-0 min-h-screen">
           
-          {/* Desktop Top Header Bar (No manual toggles, just clear branding & active workspace indicator) */}
+          {/* Desktop Top Header Bar */}
           <div className="hidden md:flex items-center justify-between px-8 py-3.5 border-b border-white/10 liquid-glass-card-subtle sticky top-0 z-20">
             <div className="flex items-center gap-3">
               <span className="text-sm font-semibold text-white">
-                {activeTab === 'home' && 'শব্দকথা · টেক্সট টু স্পিচ স্টুডিও'}
+                {activeTab === 'home' && 'শব্দকথা · টেক্সট টু স্পিচ স্টুডিও (বাংলা · हिन्दी · English)'}
                 {activeTab === 'voices' && 'শব্দকথা · ভয়েস লাইব্রেরি ও মডেলসমূহ'}
-                {activeTab === 'history' && 'শব্দকথা · পূর্ববর্তী অডিও তালিকা'}
                 {activeTab === 'account' && 'শব্দকথা · অ্যাকাউন্ট ও সেটিংস'}
               </span>
             </div>
@@ -66,7 +76,6 @@ export default function App() {
               <HomeView
                 onOpenMenu={() => setIsMenuOpen(true)}
                 onNavigateToVoices={() => setActiveTab('voices')}
-                onNavigateToHistory={() => setActiveTab('history')}
                 onNavigateToAccount={() => setActiveTab('account')}
                 selectedVoice={selectedVoice}
                 setSelectedVoice={setSelectedVoice}
@@ -83,16 +92,11 @@ export default function App() {
                 onNavigateHome={() => setActiveTab('home')}
                 selectedUseCase={selectedUseCase}
                 onSelectUseCase={setSelectedUseCase}
+                currentLanguageCode={currentLangCode}
               />
-            )}
-            {activeTab === 'history' && (
-              <HistoryView onNavigateHome={() => setActiveTab('home')} />
             )}
             {activeTab === 'account' && <AccountView />}
           </div>
-
-          {/* Ambient radiant liquid water glow at bottom for mobile screens */}
-          <div className="pointer-events-none fixed bottom-0 left-0 right-0 h-32 bg-gradient-to-t from-cyan-500/30 via-sky-500/15 to-transparent blur-2xl z-20 md:hidden" />
 
           {/* Sticky Mobile Bottom Navigation for phone screen widths */}
           <BottomNavigation activeTab={activeTab} setActiveTab={setActiveTab} />
