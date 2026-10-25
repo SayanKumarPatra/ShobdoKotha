@@ -1,22 +1,21 @@
 import React, { useState, useEffect } from 'react';
 import { 
-  User as UserIcon, 
   Key, 
   ShieldCheck, 
   Zap, 
   HardDrive, 
   CheckCircle2, 
-  AlertCircle, 
   ExternalLink, 
   Edit3, 
   Check, 
   Sparkles,
   HelpCircle,
   LogOut,
-  LogIn
+  Volume2
 } from 'lucide-react';
 import { auth, loginWithGoogle, logoutUser, firebaseConfig } from '../../services/firebase';
 import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
+import { playAudiblePreview } from '../../services/audioService';
 
 export const AccountView: React.FC = () => {
   // Firebase User State
@@ -32,9 +31,8 @@ export const AccountView: React.FC = () => {
   const [tempEmail, setTempEmail] = useState<string>('');
   const [profileSaved, setProfileSaved] = useState<boolean>(false);
 
-  // API Key state
+  // Google Gemini API Key state (only Gemini as requested by user)
   const [geminiKey, setGeminiKey] = useState<string>('');
-  const [cartesiaKey, setCartesiaKey] = useState<string>('');
   const [isKeySaved, setIsKeySaved] = useState<boolean>(false);
 
   useEffect(() => {
@@ -62,11 +60,9 @@ export const AccountView: React.FC = () => {
       if (savedEmail) setUserEmail(savedEmail);
     }
 
-    // Load saved API keys
+    // Load saved Gemini API key
     const savedGemini = localStorage.getItem('shobdokotha_gemini_key') || '';
-    const savedCartesia = localStorage.getItem('shobdokotha_cartesia_key') || '';
     setGeminiKey(savedGemini);
-    setCartesiaKey(savedCartesia);
   }, []);
 
   const handleGoogleLogin = async () => {
@@ -120,23 +116,19 @@ export const AccountView: React.FC = () => {
       localStorage.removeItem('shobdokotha_gemini_key');
     }
 
-    if (cartesiaKey.trim()) {
-      localStorage.setItem('shobdokotha_cartesia_key', cartesiaKey.trim());
-    } else {
-      localStorage.removeItem('shobdokotha_cartesia_key');
-    }
-
     setIsKeySaved(true);
     setTimeout(() => setIsKeySaved(false), 3000);
   };
 
   const handleClearKeys = () => {
     localStorage.removeItem('shobdokotha_gemini_key');
-    localStorage.removeItem('shobdokotha_cartesia_key');
     setGeminiKey('');
-    setCartesiaKey('');
     setIsKeySaved(true);
     setTimeout(() => setIsKeySaved(false), 3000);
+  };
+
+  const handleTestSpeakerSound = () => {
+    playAudiblePreview('শব্দকথা স্টুডিওতে আপনার সাউন্ড সফলভাবে কাজ করছে।');
   };
 
   return (
@@ -149,7 +141,7 @@ export const AccountView: React.FC = () => {
             আমার অ্যাকাউন্ট ও প্রোফাইল
           </h1>
           <p className="text-xs text-neutral-400">
-            ব্যবহারকারী প্রোফাইল তৈরি করুন, এডিট করুন এবং সরাসরি API Key সংযোগ দিন।
+            ব্যবহারকারী প্রোফাইল তৈরি করুন এবং সরাসরি Google Gemini API Key সংযোগ দিন।
           </p>
         </div>
 
@@ -173,8 +165,8 @@ export const AccountView: React.FC = () => {
           </div>
         )}
 
-        {/* User Profile Card (Dynamic & Google Auth Powered) */}
-        <div className="liquid-glass-card rounded-3xl p-5 mb-4 relative glass-rim-sheen">
+        {/* User Profile Card */}
+        <div className="liquid-glass-card rounded-3xl p-5 mb-4 relative glass-rim-sheen border border-cyan-500/20">
           {!isEditingProfile ? (
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
               <div className="flex items-center gap-3.5">
@@ -308,60 +300,43 @@ export const AccountView: React.FC = () => {
           )}
         </div>
 
-        {/* API KEY DIRECT GENERATION & SETTINGS CARD */}
-        <div className="liquid-glass-card rounded-3xl p-5 mb-4">
+        {/* GOOGLE GEMINI API KEY CARD (Only Google Gemini) */}
+        <div className="liquid-glass-card rounded-3xl p-5 mb-4 border border-cyan-500/20">
           <div className="flex items-center gap-2.5 mb-2">
-            <div className="w-8 h-8 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center">
+            <div className="w-8 h-8 rounded-xl bg-cyan-500/20 border border-cyan-400/30 flex items-center justify-center">
               <Key className="w-4 h-4 text-cyan-400" />
             </div>
             <div>
-              <h3 className="font-semibold text-sm text-white">AI Voice API Key সংযোগ</h3>
-              <p className="text-[11px] text-neutral-400">Google Gemini অথবা Cartesia API কী সংযুক্ত করুন</p>
+              <h3 className="font-semibold text-sm text-white">Google Gemini API Key সংযোগ</h3>
+              <p className="text-[11px] text-neutral-400">গুগল এআই স্টুডিওর ফ্রি এপিআই কী সংযুক্ত করুন</p>
             </div>
           </div>
 
-          {/* Direct API Key Generation Links Banner (Requested by user) */}
+          {/* Direct API Key Link Banner */}
           <div className="liquid-glass-card-subtle rounded-2xl p-4 my-3 border border-cyan-500/30 bg-gradient-to-br from-cyan-950/30 to-blue-950/20">
             <div className="flex items-center gap-2 mb-2">
               <Sparkles className="w-4 h-4 text-cyan-300 shrink-0" />
-              <h4 className="text-xs font-semibold text-white">এপিআই কি (API Key) কীভাবে বের করবেন?</h4>
+              <h4 className="text-xs font-semibold text-white">Google Gemini API Key কীভাবে বের করবেন?</h4>
             </div>
             <p className="text-[11px] text-neutral-300 leading-relaxed mb-3">
-              আপনার কাছে যদি এখনো কোনো API Key না থাকে, নিচের বাটনে ক্লিক করলেই সরাসরি অফিশিয়াল পেজ থেকে ১ ক্লিকে <strong>১০০% ফ্রি API Key</strong> বের করতে পারবেন:
+              Google AI Studio থেকে সরাসরি ১ ক্লিকে আপনার <strong>১০০% ফ্রি Gemini API Key</strong> জেনারেট করুন:
             </p>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-              {/* Google AI Studio API Key Link */}
-              <a
-                href="https://aistudio.google.com/app/apikey"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center justify-between p-3 rounded-xl bg-cyan-500/15 hover:bg-cyan-500/25 border border-cyan-400/40 text-white transition-all group"
-              >
-                <div>
-                  <div className="text-xs font-bold text-cyan-200 flex items-center gap-1.5">
-                    <span>Google Gemini API Key নিন</span>
-                    <span className="text-[9px] px-1.5 py-0.2 rounded bg-cyan-400 text-black font-semibold">ফ্রি</span>
-                  </div>
-                  <div className="text-[10px] text-neutral-300">Google AI Studio-তে তৈরি করুন</div>
+            <a
+              href="https://aistudio.google.com/app/apikey"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center justify-between p-3.5 rounded-xl bg-gradient-to-r from-cyan-500/20 to-blue-600/20 hover:from-cyan-500/30 hover:to-blue-600/30 border border-cyan-400/40 text-white transition-all group"
+            >
+              <div>
+                <div className="text-xs font-bold text-cyan-200 flex items-center gap-1.5">
+                  <span>👉 Google Gemini API Key নিন (ফ্রি)</span>
+                  <span className="text-[9px] px-1.5 py-0.2 rounded bg-cyan-400 text-black font-semibold">ফ্রি</span>
                 </div>
-                <ExternalLink className="w-4 h-4 text-cyan-300 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
-              </a>
-
-              {/* Cartesia API Key Link */}
-              <a
-                href="https://play.cartesia.ai/keys"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center justify-between p-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/15 text-white transition-all group"
-              >
-                <div>
-                  <div className="text-xs font-bold text-neutral-200">Cartesia API Key নিন</div>
-                  <div className="text-[10px] text-neutral-400">play.cartesia.ai থেকে কী কপি করুন</div>
-                </div>
-                <ExternalLink className="w-4 h-4 text-neutral-300 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
-              </a>
-            </div>
+                <div className="text-[10px] text-neutral-300">Google AI Studio এ গিয়ে 'Create API key' বাটনে ক্লিক করুন</div>
+              </div>
+              <ExternalLink className="w-4 h-4 text-cyan-300 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
+            </a>
 
             <div className="mt-2.5 text-[10px] text-cyan-200/80 flex items-center gap-1.5">
               <HelpCircle className="w-3 h-3 text-cyan-300 shrink-0" />
@@ -371,38 +346,35 @@ export const AccountView: React.FC = () => {
 
           <form onSubmit={handleSaveApiKeys} className="space-y-3">
             <div>
-              <label className="block text-xs text-neutral-300 mb-1.5">
-                Google Gemini API Key (সুপারফাস্ট স্পিচ ও প্রম্পট)
-              </label>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="text-xs text-neutral-300">
+                  Google Gemini API Key (AIzaSy...)
+                </label>
+                <button
+                  type="button"
+                  onClick={handleTestSpeakerSound}
+                  className="text-[11px] text-cyan-400 hover:text-cyan-300 flex items-center gap-1 cursor-pointer"
+                >
+                  <Volume2 className="w-3 h-3" />
+                  <span>সাউন্ড টেস্ট</span>
+                </button>
+              </div>
               <input
                 type="password"
                 value={geminiKey}
                 onChange={(e) => setGeminiKey(e.target.value)}
                 placeholder="AIzaSy... (গুগল এআই স্টুডিও কী)"
-                className="w-full liquid-glass-input h-11 px-3.5 rounded-2xl text-xs text-white placeholder-neutral-500 focus:outline-none"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs text-neutral-300 mb-1.5">
-                Cartesia API Key (ঐচ্ছিক Sonic Multilingual)
-              </label>
-              <input
-                type="password"
-                value={cartesiaKey}
-                onChange={(e) => setCartesiaKey(e.target.value)}
-                placeholder="sk_car_... (কার্টেসিয়া কী)"
-                className="w-full liquid-glass-input h-11 px-3.5 rounded-2xl text-xs text-white placeholder-neutral-500 focus:outline-none"
+                className="w-full liquid-glass-input h-11 px-3.5 rounded-2xl text-xs text-white placeholder-neutral-500 focus:outline-none font-mono"
               />
             </div>
 
             <div className="flex items-center gap-2 pt-1">
               <button
                 type="submit"
-                className="liquid-glass-button px-4 py-2 rounded-xl text-xs font-semibold text-white flex items-center gap-2 cursor-pointer"
+                className="px-5 py-2 rounded-xl text-xs font-semibold text-black bg-cyan-400 hover:bg-cyan-300 flex items-center gap-2 cursor-pointer shadow-lg shadow-cyan-500/20"
               >
-                <HardDrive className="w-3.5 h-3.5 text-cyan-300" />
-                <span>API চাবি সংরক্ষণ করুন</span>
+                <HardDrive className="w-3.5 h-3.5" />
+                <span>API কী সংরক্ষণ করুন</span>
               </button>
 
               <button
@@ -417,7 +389,7 @@ export const AccountView: React.FC = () => {
             {isKeySaved && (
               <p className="text-xs text-emerald-400 flex items-center gap-1.5 pt-1">
                 <CheckCircle2 className="w-3.5 h-3.5" />
-                <span>API কী সেটিংস সফলভাবে আপডেট হয়েছে!</span>
+                <span>Google Gemini API কী সফলভাবে সংরক্ষিত হয়েছে!</span>
               </p>
             )}
           </form>
@@ -425,7 +397,7 @@ export const AccountView: React.FC = () => {
 
         {/* Feature Badges */}
         <div className="grid grid-cols-2 gap-3 mb-4">
-          <div className="liquid-glass-card rounded-2xl p-3.5 flex items-center gap-2.5">
+          <div className="liquid-glass-card rounded-2xl p-3.5 flex items-center gap-2.5 border border-cyan-500/20">
             <ShieldCheck className="w-5 h-5 text-cyan-400 shrink-0" />
             <div>
               <div className="text-xs font-semibold text-white">১০০% নিরাপদ স্টোরেজ</div>
@@ -433,11 +405,11 @@ export const AccountView: React.FC = () => {
             </div>
           </div>
 
-          <div className="liquid-glass-card rounded-2xl p-3.5 flex items-center gap-2.5">
-            <Zap className="w-5 h-5 text-amber-400 shrink-0" />
+          <div className="liquid-glass-card rounded-2xl p-3.5 flex items-center gap-2.5 border border-cyan-500/20">
+            <Zap className="w-5 h-5 text-cyan-400 shrink-0" />
             <div>
               <div className="text-xs font-semibold text-white">রিয়েলটাইম প্লেব্যাক</div>
-              <div className="text-[10px] text-neutral-400">WAV স্টুডিও অডিও</div>
+              <div className="text-[10px] text-neutral-400">Google Gemini AI অডিও</div>
             </div>
           </div>
         </div>

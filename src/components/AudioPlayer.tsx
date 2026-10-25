@@ -6,9 +6,15 @@ interface AudioPlayerProps {
   item: GeneratedAudioItem;
   onRegenerate?: () => void;
   className?: string;
+  autoPlay?: boolean;
 }
 
-export const AudioPlayer: React.FC<AudioPlayerProps> = ({ item, onRegenerate, className = '' }) => {
+export const AudioPlayer: React.FC<AudioPlayerProps> = ({ 
+  item, 
+  onRegenerate, 
+  className = '',
+  autoPlay = false 
+}) => {
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
   const [currentTime, setCurrentTime] = useState<number>(0);
   const [duration, setDuration] = useState<number>(item.duration || 0);
@@ -20,7 +26,7 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({ item, onRegenerate, cl
     if (!audio) return;
 
     const onLoadedMetadata = () => {
-      if (audio.duration && !isNaN(audio.duration)) {
+      if (audio.duration && !isNaN(audio.duration) && audio.duration > 0) {
         setDuration(audio.duration);
       }
     };
@@ -38,38 +44,34 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({ item, onRegenerate, cl
     audio.addEventListener('timeupdate', onTimeUpdate);
     audio.addEventListener('ended', onEnded);
 
+    if (autoPlay) {
+      const playPromise = audio.play();
+      if (playPromise !== undefined) {
+        playPromise
+          .then(() => setIsPlaying(true))
+          .catch((err) => console.log('Autoplay prevented by browser:', err));
+      }
+    }
+
     return () => {
       audio.removeEventListener('loadedmetadata', onLoadedMetadata);
       audio.removeEventListener('timeupdate', onTimeUpdate);
       audio.removeEventListener('ended', onEnded);
+      audio.pause();
     };
-  }, [item.audioUrl]);
+  }, [item.id, item.audioUrl, autoPlay]);
 
-  // Handle Play/Pause
   const togglePlay = () => {
-    if (!audioRef.current) return;
+    const audio = audioRef.current;
+    if (!audio) return;
+
     if (isPlaying) {
-      audioRef.current.pause();
-      if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+      audio.pause();
       setIsPlaying(false);
     } else {
-      // Play real audio buffer
-      audioRef.current.play().then(() => {
-        setIsPlaying(true);
-      }).catch(() => {
-        // Fallback to browser speech only if audio element failed
-        if ('speechSynthesis' in window) {
-          window.speechSynthesis.cancel();
-          const utter = new SpeechSynthesisUtterance(item.text);
-          utter.rate = item.speed;
-          utter.pitch = item.voice.pitch;
-          utter.lang = item.voice.langCode;
-          utter.onend = () => setIsPlaying(false);
-          utter.onerror = () => setIsPlaying(false);
-          window.speechSynthesis.speak(utter);
-          setIsPlaying(true);
-        }
-      });
+      audio.play()
+        .then(() => setIsPlaying(true))
+        .catch((err) => console.warn('Audio playback error:', err));
     }
   };
 
@@ -91,7 +93,7 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({ item, onRegenerate, cl
   };
 
   const formatTime = (seconds: number) => {
-    if (isNaN(seconds)) return '0:00';
+    if (isNaN(seconds) || seconds < 0) return '0:00';
     const m = Math.floor(seconds / 60);
     const s = Math.floor(seconds % 60);
     return `${m}:${s < 10 ? '0' : ''}${s}`;
@@ -100,25 +102,27 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({ item, onRegenerate, cl
   const progressPercent = duration > 0 ? (currentTime / duration) * 100 : 0;
 
   return (
-    <div className={`liquid-glass-card rounded-2xl p-4 sm:p-5 text-white ${className}`}>
-      {/* Hidden audio element for real audio control */}
+    <div className={`liquid-glass-card rounded-2xl p-4 sm:p-5 text-white shadow-2xl border border-cyan-500/30 ${className}`}>
+      {/* Real audio element */}
       <audio ref={audioRef} src={item.audioUrl} preload="auto" />
 
       {/* Header Info */}
       <div className="flex items-center justify-between mb-3.5">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-white/5 border border-white/15 flex items-center justify-center text-xl shadow-inner">
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-cyan-500/20 to-blue-600/30 border border-cyan-400/30 flex items-center justify-center text-xl shadow-inner">
             {item.voice.avatar}
           </div>
           <div>
-            <div className="flex items-center gap-2">
-              <span className="font-semibold text-sm text-white">{item.voice.bengaliName} ({item.voice.name})</span>
-              <span className="text-[11px] px-2 py-0.5 rounded-full bg-white/10 text-cyan-300 border border-white/10">
-                {item.voice.categoryLabel}
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="font-semibold text-sm text-white">
+                {item.voice.bengaliName} ({item.voice.name})
+              </span>
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-400/30 font-medium">
+                Gemini 3.8 Neural Speech
               </span>
             </div>
             <p className="text-xs text-neutral-400 mt-0.5">
-              {item.speed}x গতি · {item.tone}
+              {item.speed}x গতি · {item.tone} · {item.voice.useCaseLabel} · {item.language}
             </p>
           </div>
         </div>
@@ -129,15 +133,15 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({ item, onRegenerate, cl
             <button
               onClick={onRegenerate}
               title="পুনরায় তৈরি করুন"
-              className="p-2 rounded-xl text-neutral-300 hover:text-white bg-white/5 hover:bg-white/10 border border-white/10 transition-colors"
+              className="p-2 rounded-xl text-neutral-300 hover:text-white bg-white/5 hover:bg-white/10 border border-white/10 transition-colors cursor-pointer"
             >
               <RotateCcw className="w-4 h-4" />
             </button>
           )}
           <button
             onClick={handleDownload}
-            title="অডিও ডাউনলোড করুন"
-            className="p-2 rounded-xl text-cyan-300 hover:text-cyan-200 bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-400/20 transition-colors"
+            title="WAV অডিও ডাউনলোড করুন"
+            className="p-2 rounded-xl text-cyan-300 hover:text-cyan-200 bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-400/20 transition-colors cursor-pointer"
           >
             <Download className="w-4 h-4" />
           </button>
@@ -145,10 +149,10 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({ item, onRegenerate, cl
       </div>
 
       {/* Live Audio Visualizer Wave Bars */}
-      <div className="h-10 my-3 flex items-center justify-center gap-1 px-2 bg-black/40 rounded-xl border border-white/5 overflow-hidden">
+      <div className="h-11 my-3 flex items-center justify-center gap-1 px-2 bg-black/50 rounded-xl border border-cyan-500/20 overflow-hidden">
         {Array.from({ length: 32 }).map((_, i) => {
           const barHeight = isPlaying 
-            ? Math.max(15, (Math.sin(i * 0.4 + currentTime * 8) * 0.5 + 0.5) * 85)
+            ? Math.max(18, (Math.sin(i * 0.4 + currentTime * 8) * 0.5 + 0.5) * 90)
             : Math.max(12, Math.sin(i * 0.3) * 20 + 25);
           const isPassed = (i / 32) * 100 <= progressPercent;
 
@@ -157,7 +161,7 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({ item, onRegenerate, cl
               key={i}
               className={`w-[4px] rounded-full transition-all duration-75 ${
                 isPassed 
-                  ? 'bg-gradient-to-t from-cyan-400 to-blue-300' 
+                  ? 'bg-gradient-to-t from-cyan-400 via-blue-400 to-indigo-300 shadow-[0_0_8px_rgba(56,189,248,0.5)]' 
                   : 'bg-white/20'
               }`}
               style={{ height: `${barHeight}%` }}
@@ -172,11 +176,11 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({ item, onRegenerate, cl
           <input
             type="range"
             min="0"
-            max={duration || 10}
+            max={duration > 0 ? duration : 10}
             step="0.05"
             value={currentTime}
             onChange={handleSeek}
-            className="w-full h-1 bg-white/20 rounded-lg appearance-none cursor-pointer"
+            className="w-full h-1 bg-white/20 rounded-lg appearance-none cursor-pointer accent-cyan-400"
           />
         </div>
         <div className="flex justify-between text-[11px] text-neutral-400 font-mono">
@@ -194,32 +198,32 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({ item, onRegenerate, cl
               setIsMuted(!isMuted);
             }
           }}
-          className="text-neutral-400 hover:text-white transition-colors"
+          className="text-neutral-400 hover:text-white transition-colors cursor-pointer"
         >
-          {isMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
+          {isMuted ? <VolumeX className="w-4 h-4 text-red-400" /> : <Volume2 className="w-4 h-4 text-cyan-400" />}
         </button>
 
-        {/* Central Play/Pause Liquid Button */}
+        {/* Central Play/Pause Liquid Glowing Button */}
         <button
           onClick={togglePlay}
-          className="liquid-glass-button px-6 py-2 rounded-full flex items-center gap-2 text-white font-medium text-sm group"
+          className="px-7 py-2.5 rounded-full flex items-center gap-2.5 text-white font-semibold text-sm bg-gradient-to-r from-cyan-500 via-blue-600 to-cyan-500 hover:from-cyan-400 hover:via-blue-500 hover:to-cyan-400 shadow-[0_0_20px_rgba(56,189,248,0.4)] hover:shadow-[0_0_30px_rgba(56,189,248,0.6)] transition-all cursor-pointer active:scale-95"
         >
           {isPlaying ? (
             <>
               <Pause className="w-4 h-4 fill-white" />
-              <span>বিরতি</span>
+              <span>বিরতি (Pause)</span>
             </>
           ) : (
             <>
-              <Play className="w-4 h-4 fill-white" />
-              <span>চালিয়ে শুনুন</span>
+              <Play className="w-4 h-4 fill-white ml-0.5" />
+              <span>চালিয়ে শুনুন (Play Voice)</span>
             </>
           )}
         </button>
 
-        <span className="text-[11px] text-neutral-400 flex items-center gap-1">
+        <span className="text-[11px] text-cyan-300 font-medium flex items-center gap-1">
           <Sparkles className="w-3 h-3 text-cyan-400" />
-          <span>44.1 kHz WAV</span>
+          <span>WAV অডিও</span>
         </span>
       </div>
     </div>

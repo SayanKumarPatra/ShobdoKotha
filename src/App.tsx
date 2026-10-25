@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { VOICES_CATALOG, SUPPORTED_LANGUAGES } from './data/voices';
-import { ActiveTab, Voice, VoiceUseCase } from './types';
+import { ActiveTab, Voice, VoiceUseCase, SupportedLanguageCode } from './types';
 import { HomeView } from './components/views/HomeView';
 import { VoicesView } from './components/views/VoicesView';
 import { AccountView } from './components/views/AccountView';
@@ -13,8 +13,14 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<ActiveTab>('home');
   const [selectedVoice, setSelectedVoice] = useState<Voice>(VOICES_CATALOG[0]);
   const [selectedLanguage, setSelectedLanguage] = useState<string>(SUPPORTED_LANGUAGES[0].nativeName);
-  const [selectedUseCase, setSelectedUseCase] = useState<VoiceUseCase>('general');
+  const [selectedUseCase, setSelectedUseCase] = useState<VoiceUseCase>('ad');
   const [isMenuOpen, setIsMenuOpen] = useState<boolean>(false);
+
+  const currentLangCode: SupportedLanguageCode = selectedLanguage.toLowerCase().includes('hi')
+    ? 'hi'
+    : selectedLanguage.toLowerCase().includes('en')
+      ? 'en'
+      : 'bn';
 
   return (
     <div className="min-h-screen bg-black text-white relative selection:bg-cyan-500/30 selection:text-cyan-100 flex flex-col antialiased overflow-x-hidden">
@@ -43,14 +49,14 @@ export default function App() {
         {/* Left Desktop Sidebar (automatically shown on desktop) */}
         <DesktopSidebar activeTab={activeTab} setActiveTab={setActiveTab} />
 
-        {/* Main Content Area: Naturally responsive for all devices with clean, crisp background */}
+        {/* Main Content Area */}
         <main className="flex-1 flex flex-col min-w-0 min-h-screen">
           
-          {/* Desktop Top Header Bar (No manual toggles, just clear branding & active workspace indicator) */}
+          {/* Desktop Top Header Bar */}
           <div className="hidden md:flex items-center justify-between px-8 py-3.5 border-b border-white/10 liquid-glass-card-subtle sticky top-0 z-20">
             <div className="flex items-center gap-3">
               <span className="text-sm font-semibold text-white">
-                {activeTab === 'home' && 'শব্দকথা · টেক্সট টু স্পিচ স্টুডিও'}
+                {activeTab === 'home' && 'শব্দকথা · টেক্সট টু স্পিচ স্টুডিও (বাংলা · हिन्दी · English)'}
                 {activeTab === 'voices' && 'শব্দকথা · ভয়েস লাইব্রেরি ও মডেলসমূহ'}
                 {activeTab === 'account' && 'শব্দকথা · অ্যাকাউন্ট ও সেটিংস'}
               </span>
@@ -86,6 +92,7 @@ export default function App() {
                 onNavigateHome={() => setActiveTab('home')}
                 selectedUseCase={selectedUseCase}
                 onSelectUseCase={setSelectedUseCase}
+                currentLanguageCode={currentLangCode}
               />
             )}
             {activeTab === 'account' && <AccountView />}

@@ -1,177 +1,260 @@
-import { GeneratedAudioItem, Voice, VoiceUseCase } from '../types';
-import { callCartesiaTtsApi, getStoredCartesiaKey, CartesiaError } from './cartesiaService';
+import { GeneratedAudioItem, Voice, VoiceUseCase, SupportedLanguageCode } from '../types';
 
-export { CartesiaError };
+export function getStoredGeminiKey(): string | null {
+  try {
+    const key = localStorage.getItem('shobdokotha_gemini_key') || '';
+    return key.trim() || null;
+  } catch {
+    return null;
+  }
+}
+
+export function setStoredGeminiKey(key: string): void {
+  try {
+    const trimmed = key.trim();
+    if (trimmed) {
+      localStorage.setItem('shobdokotha_gemini_key', trimmed);
+    } else {
+      localStorage.removeItem('shobdokotha_gemini_key');
+    }
+  } catch (e) {
+    console.warn('Could not store Gemini key in localStorage', e);
+  }
+}
 
 /**
- * Generate real speech audio via Cartesia AI or server-side Gemini TTS API
+ * Validates text input before speech generation
+ */
+export function validateTtsInput(text: string): { isValid: boolean; errorMessage?: string } {
+  const trimmed = text ? text.trim() : '';
+  if (!trimmed) {
+    return {
+      isValid: false,
+      errorMessage: 'অনুগ্রহ করে কিছু টেক্সট লিখুন। টেক্সট ছাড়া ভয়েস তৈরি করা সম্ভব নয়।',
+    };
+  }
+
+  if (trimmed.length > 5000) {
+    return {
+      isValid: false,
+      errorMessage: 'টেক্সটের দৈর্ঘ্য অনেক বেশি (সর্বোচ্চ ৫০০০ অক্ষর অনুমোদিত)। অনুগ্রহ করে সংক্ষেপ করুন।',
+    };
+  }
+
+  return { isValid: true };
+}
+
+// Client-side cache for voice preview blobs to prevent repeat API calls
+const previewBlobCache = new Map<string, string>();
+let currentPreviewAudio: HTMLAudioElement | null = null;
+
+/**
+ * Plays a real AI voice audition clip directly using Gemini TTS audio
+ */
+export async function playRealVoicePreview({
+  text,
+  voice,
+  languageCode = 'bn',
+  useCase = 'general',
+  onStart,
+  onEnd,
+  onError,
+}: {
+  text: string;
+  voice: Voice;
+  languageCode: SupportedLanguageCode;
+  useCase?: VoiceUseCase;
+  onStart?: () => void;
+  onEnd?: () => void;
+  onError?: (err: Error) => void;
+}): Promise<void> {
+  // Stop any currently playing preview
+  if (currentPreviewAudio) {
+    currentPreviewAudio.pause();
+    currentPreviewAudio.currentTime = 0;
+    currentPreviewAudio = null;
+  }
+
+  const cleanText = text.trim();
+  const cacheKey = `${languageCode}_${useCase}_${voice.id}_${cleanText}`;
+
+  try {
+    let audioUrl = previewBlobCache.get(cacheKey);
+
+    if (!audioUrl) {
+      const effectiveKey = getStoredGeminiKey();
+      const response = await fetch('/api/tts/generate', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          text: cleanText,
+          voiceId: voice.id,
+          useCase: useCase || voice.useCase || 'general',
+          language: languageCode,
+          geminiApiKey: effectiveKey || undefined,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        const msg = errorData.userMessage || errorData.error || 'প্রিভিউ অডিও আনতে সমস্যা হয়েছে';
+        throw new Error(msg);
+      }
+
+      const blob = await response.blob();
+      audioUrl = URL.createObjectURL(blob);
+      previewBlobCache.set(cacheKey, audioUrl);
+    }
+
+    const audio = new Audio(audioUrl);
+    currentPreviewAudio = audio;
+
+    audio.onplay = () => {
+      if (onStart) onStart();
+    };
+
+    audio.onended = () => {
+      if (currentPreviewAudio === audio) {
+        currentPreviewAudio = null;
+      }
+      if (onEnd) onEnd();
+    };
+
+    audio.onerror = () => {
+      if (currentPreviewAudio === audio) {
+        currentPreviewAudio = null;
+      }
+      if (onError) onError(new Error('অডিও প্লে করতে ব্যর্থ হয়েছে'));
+    };
+
+    await audio.play();
+  } catch (err: any) {
+    console.warn('Real preview failed:', err);
+    if (onError) onError(err);
+  }
+}
+
+/**
+ * Quick speaker sound test using real voice audition
+ */
+export function playAudiblePreview(text: string, voice?: Voice): void {
+  const defaultVoice = voice || {
+    id: 'news-studio-kore',
+    name: 'Ananya',
+    bengaliName: 'অনন্যা',
+    gender: 'female',
+    category: 'female',
+    categoryLabel: 'নারী কণ্ঠ',
+    useCase: 'news',
+    useCaseLabel: 'সংবাদ ও বুলেটিন',
+    avatar: '👩‍💼',
+    description: 'Articulate news voice',
+    bengaliDescription: 'পেশাদার সংবাদ উপস্থাপিকা',
+    sampleTexts: { bn: text, hi: text, en: text },
+    pitch: 1.05,
+    rate: 1.0,
+  } as Voice;
+
+  playRealVoicePreview({
+    text: text || 'শব্দকথা স্টুডিওতে আপনার সাউন্ড সফলভাবে কাজ করছে।',
+    voice: defaultVoice,
+    languageCode: 'bn',
+    useCase: 'news',
+  });
+}
+
+/**
+ * Stops any active preview audio
+ */
+export function stopVoicePreview(): void {
+  if (currentPreviewAudio) {
+    currentPreviewAudio.pause();
+    currentPreviewAudio.currentTime = 0;
+    currentPreviewAudio = null;
+  }
+}
+
+/**
+ * Generate real speech audio via Google Gemini API
  */
 export async function generateSpeechAudio({
   text,
   voice,
-  speed,
-  tone,
+  speed = 1.0,
+  tone = 'সাধারণ',
   useCase = 'general',
-  cartesiaApiKey,
-  preferredEngine = 'cartesia',
+  languageCode = 'bn',
+  languageLabel = 'বাংলা (Bengali)',
+  geminiApiKey,
 }: {
   text: string;
   voice: Voice;
   speed: number;
   tone: string;
   useCase?: VoiceUseCase;
-  cartesiaApiKey?: string;
-  preferredEngine?: 'cartesia' | 'gemini' | 'auto';
+  languageCode: SupportedLanguageCode;
+  languageLabel?: string;
+  geminiApiKey?: string;
 }): Promise<GeneratedAudioItem> {
   const cleanText = text.trim();
-  const effectiveCartesiaKey = cartesiaApiKey || getStoredCartesiaKey();
+  const effectiveKey = geminiApiKey || getStoredGeminiKey();
 
-  // 1. Direct Cartesia TTS API call if key is present or requested
-  if (effectiveCartesiaKey && preferredEngine !== 'gemini') {
-    const { blob, audioUrl, duration } = await callCartesiaTtsApi({
+  const response = await fetch('/api/tts/generate', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
       text: cleanText,
-      voice,
-      apiKey: effectiveCartesiaKey,
+      voiceId: voice.id,
+      useCase: useCase || voice.useCase || 'general',
+      language: languageCode,
       speed,
-    });
+      geminiApiKey: effectiveKey || undefined,
+    }),
+  });
 
-    const item: GeneratedAudioItem = {
-      id: 'cartesia_' + Date.now(),
-      text: cleanText,
-      voice,
-      language: voice.language,
-      speed,
-      tone,
-      useCase,
-      createdAt: new Date().toISOString(),
-      duration,
-      audioUrl,
-      blobSize: blob.size,
-    };
-
-    saveToHistory(item);
-    return item;
+  if (!response.ok) {
+    const errorJson = await response.json().catch(() => ({}));
+    const userMsg = errorJson.userMessage || errorJson.error || 'ভয়েস জেনারেট করতে সমস্যা হয়েছে, অনুগ্রহ করে পুনরায় চেষ্টা করুন।';
+    const err = new Error(userMsg);
+    (err as any).isQuota = errorJson.isQuota;
+    (err as any).requiresKey = errorJson.requiresKey;
+    throw err;
   }
 
-  // 2. Call server-side TTS endpoint which uses Google Gemini Flash Lite TTS
-  try {
-    const response = await fetch('/api/tts/generate', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        text: cleanText,
-        voiceId: voice.id,
-        useCase: useCase || voice.useCase || 'general',
-        language: voice.langCode,
-        speed,
-        cartesiaKey: effectiveCartesiaKey,
-      }),
-    });
-
-    if (response.ok) {
-      const contentType = response.headers.get('Content-Type') || '';
-      if (contentType.includes('audio')) {
-        const blob = await response.blob();
-        const audioUrl = URL.createObjectURL(blob);
-        
-        // Accurate duration calculation based on clean text
-        const wordCount = cleanText.split(/\s+/).length || 1;
-        const durationSec = Math.max(2.5, Math.round((wordCount * 0.42 + cleanText.length * 0.035) / speed));
-
-        const item: GeneratedAudioItem = {
-          id: 'gemini_' + Date.now(),
-          text: cleanText,
-          voice,
-          language: voice.language,
-          speed,
-          tone,
-          useCase,
-          createdAt: new Date().toISOString(),
-          duration: durationSec,
-          audioUrl,
-          blobSize: blob.size,
-        };
-
-        saveToHistory(item);
-        return item;
-      }
-    }
-  } catch (err) {
-    console.warn('Server TTS fetch failed, checking browser speech engine:', err);
+  const contentType = response.headers.get('Content-Type') || '';
+  if (!contentType.includes('audio')) {
+    const json = await response.json().catch(() => ({}));
+    throw new Error(json.userMessage || 'সার্ভার থেকে সঠিক অডিও ডেটা পাওয়া যায়নি।');
   }
 
-  // 2. Browser Native SpeechSynthesis (produces REAL human voice instead of robotic drone)
-  if ('speechSynthesis' in window) {
-    window.speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(cleanText);
-    utterance.rate = speed;
-    utterance.pitch = voice.pitch;
-    utterance.lang = voice.langCode;
+  const blob = await response.blob();
+  const audioUrl = URL.createObjectURL(blob);
+  
+  const wordCount = cleanText.split(/\s+/).length || 1;
+  const durationSec = Math.max(2.5, Math.round((wordCount * 0.45 + cleanText.length * 0.035) / speed));
 
-    const voices = window.speechSynthesis.getVoices();
-    const matched = voices.find(v => v.lang.startsWith(voice.langCode.split('-')[0])) || voices[0];
-    if (matched) utterance.voice = matched;
+  const item: GeneratedAudioItem = {
+    id: 'gemini_' + Date.now(),
+    text: cleanText,
+    voice,
+    language: languageLabel || 'বাংলা (Bengali)',
+    languageCode,
+    speed,
+    tone,
+    useCase,
+    createdAt: new Date().toISOString(),
+    duration: durationSec,
+    audioUrl,
+    blobSize: blob.size,
+    engine: 'gemini',
+  };
 
-    // Create an audio placeholder with native utterance binding
-    const wordCount = cleanText.split(/\s+/).length || 1;
-    const durationSec = Math.max(2.5, Math.round((wordCount * 0.42) / speed));
-
-    // Synthesize silent carrier WAV so audio element timeline scrubbing works while speech plays
-    const audioUrl = createSilentCarrierWav(durationSec);
-
-    const item: GeneratedAudioItem = {
-      id: 'gen_' + Date.now(),
-      text: cleanText,
-      voice,
-      language: voice.language,
-      speed,
-      tone,
-      useCase,
-      createdAt: new Date().toISOString(),
-      duration: durationSec,
-      audioUrl,
-    };
-
-    saveToHistory(item);
-    return item;
-  }
-
-  throw new Error('No voice synthesis engine available');
-}
-
-/**
- * Creates a silent RIFF WAV buffer of given duration
- */
-function createSilentCarrierWav(durationSeconds: number): string {
-  const sampleRate = 22050;
-  const numSamples = Math.floor(sampleRate * durationSeconds);
-  const buffer = new ArrayBuffer(44 + numSamples * 2);
-  const view = new DataView(buffer);
-
-  function writeString(offset: number, str: string) {
-    for (let i = 0; i < str.length; i++) {
-      view.setUint8(offset + i, str.charCodeAt(i));
-    }
-  }
-
-  writeString(0, 'RIFF');
-  view.setUint32(4, 36 + numSamples * 2, true);
-  writeString(8, 'WAVE');
-  writeString(12, 'fmt ');
-  view.setUint32(16, 16, true);
-  view.setUint16(20, 1, true); // PCM
-  view.setUint16(22, 1, true); // Mono
-  view.setUint32(24, sampleRate, true);
-  view.setUint32(28, sampleRate * 2, true);
-  view.setUint16(32, 2, true);
-  view.setUint16(34, 16, true);
-  writeString(36, 'data');
-  view.setUint32(40, numSamples * 2, true);
-
-  const blob = new Blob([buffer], { type: 'audio/wav' });
-  return URL.createObjectURL(blob);
+  saveToHistory(item);
+  return item;
 }
 
 const HISTORY_STORAGE_KEY = 'shobdokotha_audio_history';
