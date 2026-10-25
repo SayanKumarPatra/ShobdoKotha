@@ -387,9 +387,9 @@ export const AccountView: React.FC = () => {
             </div>
 
             {isKeySaved && (
-              <p className="text-xs text-emerald-400 flex items-center gap-1.5 pt-1">
-                <CheckCircle2 className="w-3.5 h-3.5" />
-                <span>Google Gemini API কী সফলভাবে সংরক্ষিত হয়েছে!</span>
+              <p className="text-xs text-emerald-400 flex items-center gap-1.5 pt-1 font-medium">
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Google Gemini API কী সারা জীবনের জন্য স্থায়ীভাবে সংরক্ষিত হয়েছে! আর কখনও দিতে হবে না।</span>
               </p>
             )}
           </form>

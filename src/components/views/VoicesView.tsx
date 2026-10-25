@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { Search, Play, Pause, Check, Volume2, ArrowRight, Sparkles, Square } from 'lucide-react';
+import { Search, Play, Check, ArrowRight, Sparkles, Square, UserCheck } from 'lucide-react';
 import { VOICES_CATALOG } from '../../data/voices';
-import { Voice, VoiceCategory, VoiceUseCase, SupportedLanguageCode } from '../../types';
+import { Voice, VoiceUseCase, SupportedLanguageCode, VoiceGender } from '../../types';
 import { playRealVoicePreview, stopVoicePreview } from '../../services/audioService';
 
 interface VoicesViewProps {
@@ -23,6 +23,7 @@ export const VoicesView: React.FC<VoicesViewProps> = ({
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [activeFilter, setActiveFilter] = useState<string>('all');
+  const [activeGender, setActiveGender] = useState<'all' | VoiceGender>('all');
   const [playingVoiceId, setPlayingVoiceId] = useState<string | null>(null);
   const [previewLoading, setPreviewLoading] = useState<boolean>(false);
 
@@ -37,14 +38,15 @@ export const VoicesView: React.FC<VoicesViewProps> = ({
   ];
 
   const filteredVoices = VOICES_CATALOG.filter((voice) => {
-    const matchesFilter = activeFilter === 'all' || voice.useCase === activeFilter;
+    const matchesCategory = activeFilter === 'all' || voice.useCase === activeFilter;
+    const matchesGender = activeGender === 'all' || voice.gender === activeGender;
     const matchesSearch = 
       voice.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       voice.bengaliName.includes(searchTerm) ||
       (voice.hindiName && voice.hindiName.includes(searchTerm)) ||
       voice.categoryLabel.includes(searchTerm) ||
       voice.useCaseLabel.includes(searchTerm);
-    return matchesFilter && matchesSearch;
+    return matchesCategory && matchesGender && matchesSearch;
   });
 
   const handlePlaySample = async (voice: Voice) => {
@@ -72,8 +74,7 @@ export const VoicesView: React.FC<VoicesViewProps> = ({
         setPlayingVoiceId(null);
         setPreviewLoading(false);
       },
-      onError: (err) => {
-        console.warn('Voice preview error:', err);
+      onError: () => {
         setPlayingVoiceId(null);
         setPreviewLoading(false);
       },
@@ -82,21 +83,64 @@ export const VoicesView: React.FC<VoicesViewProps> = ({
 
   return (
     <div className="w-full flex flex-col items-center pb-24 md:pb-10 pt-2">
-      <div className="w-full max-w-[440px] md:max-w-4xl lg:max-w-5xl px-4 sm:px-6">
+      <div className="w-full max-w-[460px] md:max-w-4xl lg:max-w-5xl px-4 sm:px-6">
         
         {/* Header */}
         <div className="mb-4">
           <div className="flex items-center gap-2 mb-1">
             <span className="text-[10px] px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-400/30 font-medium">
-              Google Gemini AI Neural Models
+              Google Gemini AI Neural Speech Studio
             </span>
           </div>
           <h1 className="text-xl sm:text-2xl font-bold text-white mb-1">
-            ভয়েস মডেল ও লাইব্রেরি
+            ভয়েস মডেল ও লাইব্রেরি (ছেলে ও মেয়ে উভয় অপশন)
           </h1>
           <p className="text-xs text-neutral-400">
-            বিজ্ঞাপন, সংবাদ, নতুন প্রোডাক্ট, শিশুদের কার্টুন, কাঠুরের গল্প ও পডকাস্ট—আপনার পছন্দের জন্য বিশেষায়িত মডেল নির্বাচন করুন।
+            বিজ্ঞাপন, সংবাদ, প্রোডাক্ট, কার্টুন, লোকগাথা ও পডকাস্ট—প্রতিটি বিষয়ের জন্য আলাদা ছেলে ও মেয়ে কণ্ঠ বেছে নিন।
           </p>
+        </div>
+
+        {/* Gender Filter Buttons */}
+        <div className="flex items-center justify-between gap-2 mb-3 bg-black/40 p-1.5 rounded-2xl border border-white/10">
+          <div className="flex items-center gap-1.5 text-xs text-neutral-300 pl-1">
+            <UserCheck className="w-3.5 h-3.5 text-cyan-400" />
+            <span className="font-semibold text-white">জেন্ডার ফিল্টার:</span>
+          </div>
+
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setActiveGender('all')}
+              className={`px-3 py-1 rounded-xl text-xs font-medium transition-all cursor-pointer ${
+                activeGender === 'all'
+                  ? 'bg-white/20 text-white font-semibold'
+                  : 'text-neutral-400 hover:text-white'
+              }`}
+            >
+              সবগুলো
+            </button>
+            <button
+              onClick={() => setActiveGender('male')}
+              className={`px-3 py-1 rounded-xl text-xs font-semibold flex items-center gap-1 transition-all cursor-pointer ${
+                activeGender === 'male'
+                  ? 'bg-gradient-to-r from-cyan-500 to-blue-600 text-white shadow-md'
+                  : 'text-neutral-400 hover:text-white'
+              }`}
+            >
+              <span>👦</span>
+              <span>ছেলে (Male)</span>
+            </button>
+            <button
+              onClick={() => setActiveGender('female')}
+              className={`px-3 py-1 rounded-xl text-xs font-semibold flex items-center gap-1 transition-all cursor-pointer ${
+                activeGender === 'female'
+                  ? 'bg-gradient-to-r from-pink-500 to-purple-600 text-white shadow-md'
+                  : 'text-neutral-400 hover:text-white'
+              }`}
+            >
+              <span>👧</span>
+              <span>মেয়ে (Female)</span>
+            </button>
+          </div>
         </div>
 
         {/* Search Bar */}
@@ -104,7 +148,7 @@ export const VoicesView: React.FC<VoicesViewProps> = ({
           <Search className="w-4 h-4 text-neutral-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
           <input
             type="text"
-            placeholder="বিজ্ঞাপন, সংবাদ, প্রোডাক্ট, কার্টুন বা কণ্ঠের নাম খুঁজুন..."
+            placeholder="বিজ্ঞাপন, সংবাদ, প্রোডাক্ট, কার্টুন, ছেলে বা মেয়ের নাম খুঁজুন..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="w-full liquid-glass-input h-11 pl-10 pr-4 rounded-2xl text-xs sm:text-sm text-white placeholder-neutral-500 focus:outline-none"
@@ -152,12 +196,16 @@ export const VoicesView: React.FC<VoicesViewProps> = ({
                           <h3 className="font-semibold text-sm sm:text-base text-white">
                             {voice.bengaliName} ({voice.name})
                           </h3>
-                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-400/30 font-medium">
-                            {voice.useCaseLabel}
+                          <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium border ${
+                            voice.gender === 'male'
+                              ? 'bg-cyan-500/20 text-cyan-300 border-cyan-400/30'
+                              : 'bg-pink-500/20 text-pink-300 border-pink-400/30'
+                          }`}>
+                            {voice.gender === 'male' ? 'ছেলে' : 'মেয়ে'}
                           </span>
                         </div>
                         <p className="text-xs text-neutral-400 mt-0.5">
-                          {voice.categoryLabel} · Gemini Neural Voice
+                          {voice.useCaseLabel} · Gemini AI
                         </p>
                       </div>
                     </div>
@@ -168,7 +216,7 @@ export const VoicesView: React.FC<VoicesViewProps> = ({
                       className={`w-9 h-9 rounded-xl liquid-glass-button flex items-center justify-center transition-colors cursor-pointer ${
                         isPlaying ? 'bg-cyan-500/30 text-cyan-200 border-cyan-400/60 shadow-[0_0_12px_rgba(56,189,248,0.4)]' : 'text-neutral-200'
                       }`}
-                      title={isPlaying ? 'বিরতি দিন' : 'খাঁটি এআই ভয়েস শুনুন'}
+                      title={isPlaying ? 'বিরতি দিন' : 'নমুনা শুনুন'}
                     >
                       {isPlaying ? (
                         previewLoading ? (

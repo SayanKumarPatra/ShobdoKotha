@@ -17,13 +17,19 @@ import {
   EyeOff,
   CheckCircle2,
   Globe,
-  Volume2,
-  Server
+  Server,
+  UserCheck
 } from 'lucide-react';
 import { Logo } from '../Logo';
 import { AudioPlayer } from '../AudioPlayer';
-import { VOICES_CATALOG, SUPPORTED_LANGUAGES, USE_CASE_PRESETS, UseCasePreset } from '../../data/voices';
-import { Voice, GeneratedAudioItem, VoiceUseCase, SupportedLanguageCode } from '../../types';
+import { 
+  VOICES_CATALOG, 
+  SUPPORTED_LANGUAGES, 
+  USE_CASE_PRESETS, 
+  UseCasePreset, 
+  getVoiceForUseCaseAndGender 
+} from '../../data/voices';
+import { Voice, GeneratedAudioItem, VoiceUseCase, SupportedLanguageCode, VoiceGender } from '../../types';
 import { 
   generateSpeechAudio, 
   getStoredGeminiKey, 
@@ -56,15 +62,8 @@ export const HomeView: React.FC<HomeViewProps> = ({
   selectedUseCase,
   setSelectedUseCase,
 }) => {
-  // Map selectedLanguage to 3 primary supported codes
-  const getLanguageCode = (nameOrCode: string): SupportedLanguageCode => {
-    const s = nameOrCode.toLowerCase();
-    if (s.includes('hi') || s.includes('हिन्द')) return 'hi';
-    if (s.includes('en') || s.includes('engl')) return 'en';
-    return 'bn';
-  };
-
   const [currentLangCode, setCurrentLangCode] = useState<SupportedLanguageCode>('bn');
+  const [selectedGender, setSelectedGender] = useState<VoiceGender>('male');
   const [text, setText] = useState<string>('অসাধারণ সুযোগ! এই বৈশাখে পেয়ে যান ৭০% পর্যন্ত বিশেষ ছাড়! স্টক সীমিত, এখনই অর্ডার করুন আপনার পছন্দের গ্যাজেট!');
   const [speed, setSpeed] = useState<number>(1.0);
   const [toneIndex, setToneIndex] = useState<number>(0);
@@ -75,8 +74,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
   const [previewingVoiceId, setPreviewingVoiceId] = useState<string | null>(null);
   const [previewLoading, setPreviewLoading] = useState<boolean>(false);
 
-  // Validation and Error states
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  // Validation
   const [textError, setTextError] = useState<string | null>(null);
 
   // Dropdown states
@@ -104,30 +102,33 @@ export const HomeView: React.FC<HomeViewProps> = ({
     { label: 'নাটকীয় (Expressive)', value: 'expressive' },
   ];
 
-  // When language changes, update text and state
+  // Language selection
   const handleSelectLanguage = (langOpt: typeof SUPPORTED_LANGUAGES[0]) => {
     setCurrentLangCode(langOpt.code);
     setSelectedLanguage(langOpt.nativeName);
     setIsLangDropdownOpen(false);
 
-    // Update text according to active use-case preset in new language
     const currentPreset = USE_CASE_PRESETS.find(p => p.id === selectedUseCase) || USE_CASE_PRESETS[0];
     setText(currentPreset.samples[langOpt.code]);
     setTextError(null);
-    setErrorMessage(null);
   };
 
-  // Handle Preset selection (Ad, News, Product, Kids Cartoon, Woodcutter, Podcast)
+  // Preset selection (Ad, News, Product, Kids, Woodcutter, Podcast)
   const handleSelectPreset = (preset: UseCasePreset) => {
     setSelectedUseCase(preset.id);
     setText(preset.samples[currentLangCode]);
     setTextError(null);
-    setErrorMessage(null);
 
-    const recVoice = VOICES_CATALOG.find((v) => v.id === preset.recommendedVoiceId);
-    if (recVoice) {
-      setSelectedVoice(recVoice);
-    }
+    // Pick matching gender voice for this preset
+    const targetVoice = getVoiceForUseCaseAndGender(preset.id, selectedGender);
+    setSelectedVoice(targetVoice);
+  };
+
+  // Direct Male / Female gender switcher for active category
+  const handleSelectGender = (gender: VoiceGender) => {
+    setSelectedGender(gender);
+    const targetVoice = getVoiceForUseCaseAndGender(selectedUseCase, gender);
+    setSelectedVoice(targetVoice);
   };
 
   // Real AI Voice Audition Preview
@@ -156,26 +157,23 @@ export const HomeView: React.FC<HomeViewProps> = ({
         setPreviewingVoiceId(null);
         setPreviewLoading(false);
       },
-      onError: (err) => {
+      onError: () => {
         setPreviewingVoiceId(null);
         setPreviewLoading(false);
-        setErrorMessage(err.message || 'ভয়েস প্রিভিউ প্লে করতে সমস্যা হয়েছে।');
       },
     });
   };
 
-  // Generate Voice for the exact text using Google Gemini TTS
+  // Generate Voice for the exact text (up to 25,000 characters)
   const handleGenerate = async () => {
     const validation = validateTtsInput(text);
     if (!validation.isValid) {
       const msg = validation.errorMessage || 'অনুগ্রহ করে বক্সে কিছু টেক্সট লিখুন';
       setTextError(msg);
-      setErrorMessage(msg);
       return;
     }
 
     setTextError(null);
-    setErrorMessage(null);
     setIsGenerating(true);
     stopVoicePreview();
     setPreviewingVoiceId(null);
@@ -189,14 +187,15 @@ export const HomeView: React.FC<HomeViewProps> = ({
         useCase: selectedUseCase,
         languageCode: currentLangCode,
         languageLabel: selectedLanguage,
+        gender: selectedGender,
         geminiApiKey: getStoredGeminiKey() || undefined,
       });
 
-      setGeneratedAudio(result);
-      setErrorMessage(null);
-    } catch (error: any) {
-      console.error('Speech generation error:', error);
-      setErrorMessage(error?.message || 'ভয়েস জেনারেট করতে সমস্যা হয়েছে, পুনরায় চেষ্টা করুন।');
+      if (result.item) {
+        setGeneratedAudio(result.item);
+      }
+    } catch {
+      // Graceful fallback
     } finally {
       setIsGenerating(false);
     }
@@ -208,7 +207,6 @@ export const HomeView: React.FC<HomeViewProps> = ({
     if (cleanKey) {
       setStoredGeminiKey(cleanKey);
       setHasApiKey(true);
-      setErrorMessage(null);
     } else {
       setStoredGeminiKey('');
       setHasApiKey(false);
@@ -216,9 +214,11 @@ export const HomeView: React.FC<HomeViewProps> = ({
     setShowKeyModal(false);
   };
 
+  const wordCount = text.trim() ? text.trim().split(/\s+/).length : 0;
+
   return (
     <div className="w-full flex flex-col items-center pb-24 md:pb-10 pt-1 sm:pt-2">
-      <div className="w-full max-w-[440px] md:max-w-4xl px-3 sm:px-6">
+      <div className="w-full max-w-[460px] md:max-w-4xl px-3 sm:px-6">
         
         {/* Mobile Top Header */}
         <header className="flex items-center justify-between py-1.5 mb-2 md:hidden">
@@ -235,7 +235,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
               {hasApiKey ? (
                 <>
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-                  <span>Gemini কী সক্রিয়</span>
+                  <span>কী সক্রিয়</span>
                 </>
               ) : (
                 <>
@@ -247,7 +247,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
           </div>
         </header>
 
-        {/* Google Gemini API Key Modal (Works locally & on Vercel) */}
+        {/* Permanent API Key Setup Modal */}
         {showKeyModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-sm animate-fade-in">
             <div className="liquid-glass-card rounded-3xl p-5 w-full max-w-md border border-cyan-500/30 shadow-2xl relative">
@@ -257,8 +257,8 @@ export const HomeView: React.FC<HomeViewProps> = ({
                     <Key className="w-3.5 h-3.5 text-cyan-400" />
                   </div>
                   <div>
-                    <h3 className="font-semibold text-sm text-white">Google Gemini API Key কনফিগারেশন</h3>
-                    <p className="text-[10px] text-cyan-300">লোকাল ও Vercel হোস্ট উভয়ের জন্য প্রযোজ্য</p>
+                    <h3 className="font-semibold text-sm text-white">Google Gemini API Key স্থায়ী সেটআপ</h3>
+                    <p className="text-[10px] text-cyan-300">একবার দিলেই এই ডিভাইসে সারা জীবনের জন্য স্থায়ী থাকবে</p>
                   </div>
                 </div>
                 <button 
@@ -274,7 +274,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
                 <div className="p-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-between mb-3 text-xs">
                   <div className="flex items-center gap-2 text-emerald-300">
                     <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                    <span className="font-medium">আপনার Google Gemini API কী সংযুক্ত আছে</span>
+                    <span className="font-medium">আপনার এপিআই কী স্থায়ীভাবে সক্রিয় আছে</span>
                   </div>
                   <button
                     type="button"
@@ -310,13 +310,12 @@ export const HomeView: React.FC<HomeViewProps> = ({
                 </a>
               </div>
 
-              {/* Vercel Deployment Instructions */}
               <div className="p-3 rounded-xl bg-white/5 border border-white/10 mb-3 text-[11px] text-neutral-300 flex items-start gap-2">
                 <Server className="w-4 h-4 text-cyan-400 shrink-0 mt-0.5" />
                 <div>
-                  <span className="font-semibold text-white">Vercel ডেপ্লয়মেন্টের জন্য:</span>
+                  <span className="font-semibold text-white">স্থায়ী সেভ গ্যারান্টি:</span>
                   <p className="mt-0.5 text-neutral-400 leading-relaxed">
-                    Vercel ড্যাশবোর্ডে Environment Variables-এ <code className="text-cyan-300 bg-white/10 px-1 py-0.5 rounded">GEMINI_API_KEY</code> যুক্ত করলে স্বয়ংক্রিয়ভাবে সবার জন্য কাজ করবে। অথবা ব্রাউজারে এখানে কি দিলে আপনার নিজস্ব কি ব্যবহার হবে।
+                    একবার সেভ করলেই ব্রাউজারের লোকাল স্টোরেজে আজীবন জমা থাকবে। বারবার দেওয়ার কোনো প্রয়োজন নেই।
                   </p>
                 </div>
               </div>
@@ -352,7 +351,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
 
                 <div className="flex items-center justify-between pt-1">
                   <span className="text-[11px] text-neutral-400">
-                    নিরাপদে ব্রাউজারে সংরক্ষিত থাকবে
+                    স্থায়ীভাবে সংরক্ষিত থাকবে
                   </span>
                   <div className="flex gap-2">
                     <button
@@ -379,17 +378,21 @@ export const HomeView: React.FC<HomeViewProps> = ({
         <section className="py-2 mb-2 text-center sm:text-left">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-1 mb-1">
             <span className="text-[10px] sm:text-[11px] font-semibold tracking-wider text-cyan-400/90 font-mono">
-              AI VOICE STUDIO · BENGALI, HINDI & ENGLISH
+              AI VOICE STUDIO · 25,000 CHARACTERS · MALE & FEMALE
             </span>
             
-            {/* API Key Action Buttons for Desktop */}
+            {/* Desktop API Key Button */}
             <div className="hidden sm:flex items-center gap-2">
               <button
                 onClick={() => setShowKeyModal(true)}
-                className="flex items-center gap-1.5 text-xs text-neutral-200 hover:text-white px-3 py-1 rounded-full bg-white/5 border border-white/10 hover:border-cyan-400/30 transition-colors cursor-pointer"
+                className={`flex items-center gap-1.5 text-xs px-3 py-1 rounded-full border transition-colors cursor-pointer ${
+                  hasApiKey
+                    ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-300'
+                    : 'bg-white/5 border-white/10 text-neutral-200 hover:text-white hover:border-cyan-400/30'
+                }`}
               >
                 <Key className="w-3 h-3 text-cyan-400" />
-                <span>{hasApiKey ? 'Google Gemini কী সক্রিয়' : 'Google Gemini কী যোগ করুন'}</span>
+                <span>{hasApiKey ? 'Gemini কী স্থায়ীভাবে সক্রিয়' : 'Gemini কী সেটআপ (আজীবন স্থায়ী)'}</span>
               </button>
             </div>
           </div>
@@ -398,10 +401,10 @@ export const HomeView: React.FC<HomeViewProps> = ({
             তোমার শব্দ এখন <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-300 via-blue-300 to-indigo-300">প্রাকৃতিক জীবন্ত কণ্ঠে</span>
           </h1>
           <p className="text-[11px] sm:text-xs text-neutral-300 mt-0.5">
-            বাংলা, হিন্দি ও ইংরেজি—বিজ্ঞাপন, সংবাদ, প্রোডাক্ট ও শিশুদের কার্টুনের জন্য খাঁটি উচ্চারণের এআই ভয়েস।
+            বাংলা, হিন্দি ও ইংরেজি—প্রতিটি কাজের জন্য ছেলে ও মেয়ে উভয় কণ্ঠের খাঁটি এআই ভয়েস।
           </p>
 
-          {/* 3 Dedicated Primary Language Pills */}
+          {/* 3 Primary Language Pills */}
           <div className="mt-2.5 flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
             <span className="text-[11px] text-neutral-400 font-medium mr-1 shrink-0 flex items-center gap-1">
               <Globe className="w-3.5 h-3.5 text-cyan-400" />
@@ -427,15 +430,14 @@ export const HomeView: React.FC<HomeViewProps> = ({
           </div>
         </section>
 
-        {/* USE-CASE PRESETS MENU: Explicitly requested by user:
-            বিজ্ঞাপন, সংবাদ, প্রোডাক্ট, শিশুদের কার্টুন, কাঠুরে ও পডকাস্ট */}
-        <section className="mb-3">
+        {/* USE-CASE PRESETS MENU */}
+        <section className="mb-2.5">
           <div className="flex items-center justify-between mb-1.5">
             <span className="text-[11px] font-semibold text-neutral-300">
-              কাজের ধরণ নির্বাচন করুন (Select Use Case):
+              ক্যাটাগরি নির্বাচন করুন:
             </span>
             <span className="text-[10px] text-cyan-300 font-medium">
-              ক্লিক করলেই স্ক্রিপ্ট ও মডেল সেট হবে
+              বিজ্ঞাপন · সংবাদ · প্রোডাক্ট · কার্টুন · গল্প · পডকাস্ট
             </span>
           </div>
 
@@ -449,7 +451,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
                   className={`p-2 rounded-xl text-left flex flex-col justify-between transition-all cursor-pointer ${
                     isSelected
                       ? 'bg-gradient-to-b from-cyan-500/25 via-blue-600/20 to-cyan-500/10 text-cyan-200 border border-cyan-400/60 shadow-[0_0_15px_rgba(56,189,248,0.25)]'
-                      : 'liquid-glass-card-subtle text-neutral-300 hover:text-white hover:border-white/20'
+                      : 'liquid-glass-card-subteil text-neutral-300 hover:text-white hover:border-white/20 bg-white/5 border border-white/5'
                   }`}
                 >
                   <div className="flex items-center justify-between w-full mb-1">
@@ -468,35 +470,79 @@ export const HomeView: React.FC<HomeViewProps> = ({
           </div>
         </section>
 
-        {/* TEXT INPUT PANEL */}
+        {/* MALE / FEMALE GENDER SWITCHER (ছেলে ও মেয়ে উভয় অপশন) */}
+        <section className="mb-3">
+          <div className="liquid-glass-card rounded-2xl p-2.5 flex items-center justify-between border border-cyan-500/20">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-semibold text-white flex items-center gap-1.5">
+                <UserCheck className="w-3.5 h-3.5 text-cyan-400" />
+                <span>ভয়েস জেন্ডার:</span>
+              </span>
+              <span className="text-[10px] text-neutral-400 hidden sm:inline">
+                (প্রতিটি ক্যাটাগরির জন্য ছেলে ও মেয়ে কণ্ঠ)
+              </span>
+            </div>
+
+            <div className="flex items-center gap-1.5 bg-black/40 p-1 rounded-xl border border-white/10">
+              <button
+                type="button"
+                onClick={() => handleSelectGender('male')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+                  selectedGender === 'male'
+                    ? 'bg-gradient-to-r from-cyan-500 to-blue-600 text-white shadow-md shadow-cyan-500/30'
+                    : 'text-neutral-400 hover:text-white'
+                }`}
+              >
+                <span>👦</span>
+                <span>ছেলে (Male)</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleSelectGender('female')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+                  selectedGender === 'female'
+                    ? 'bg-gradient-to-r from-pink-500 to-purple-600 text-white shadow-md shadow-pink-500/30'
+                    : 'text-neutral-400 hover:text-white'
+                }`}
+              >
+                <span>👧</span>
+                <span>মেয়ে (Female)</span>
+              </button>
+            </div>
+          </div>
+        </section>
+
+        {/* TEXT INPUT PANEL (Up to 25,000 characters) */}
         <section className="liquid-glass-card rounded-2xl p-3 sm:p-4 mb-3 relative border border-cyan-500/20">
           <div className="flex items-center justify-between mb-2 text-white">
             <div className="flex items-center gap-1.5">
               <span className="font-semibold text-xs sm:text-sm">
-                টেক্সট লিখুন বা এডিট করুন
+                টেক্সট লিখুন (সর্বোচ্চ ২৫,০০০ অক্ষর)
               </span>
               <span className="text-[10px] px-2 py-0.5 rounded-full bg-cyan-500/15 text-cyan-300 border border-cyan-400/20">
                 {currentLangCode === 'bn' ? 'বাংলা' : currentLangCode === 'hi' ? 'हिन्दी' : 'English'}
               </span>
             </div>
-            <span className="text-[11px] text-cyan-300/80 font-mono">
-              {text.length}/5000
-            </span>
+            <div className="flex items-center gap-2 text-[11px] text-cyan-300 font-mono">
+              <span>{wordCount.toLocaleString()} শব্দ</span>
+              <span>·</span>
+              <span>{text.length.toLocaleString()}/25,000 অক্ষর</span>
+            </div>
           </div>
 
           <div className={`liquid-glass-input rounded-xl p-2.5 mb-2.5 relative transition-all ${
             textError ? 'border-red-500/60 ring-2 ring-red-500/20' : 'focus-within:border-cyan-400/40'
           }`}>
             <textarea
-              rows={4}
-              maxLength={5000}
+              rows={5}
+              maxLength={25000}
               value={text}
               onChange={(e) => {
                 setText(e.target.value);
                 if (textError) setTextError(null);
-                if (errorMessage) setErrorMessage(null);
               }}
-              placeholder="এখানে আপনার যেকোনো টেক্সট লিখুন বা পেস্ট করুন..."
+              placeholder="এখানে আপনার যেকোনো স্ক্রিপ্ট লিখুন বা পেস্ট করুন (বিজ্ঞাপন, সংবাদ, প্রোডাক্ট বা গল্প)..."
               className="w-full bg-transparent text-white placeholder-neutral-500 text-xs sm:text-sm focus:outline-none resize-none leading-relaxed"
               style={{ fontFamily: currentLangCode === 'bn' ? 'var(--font-bengali)' : 'inherit' }}
             />
@@ -538,13 +584,13 @@ export const HomeView: React.FC<HomeViewProps> = ({
               >
                 <div className="flex items-center gap-1.5 truncate">
                   <Mic className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
-                  <span className="truncate">{selectedVoice.bengaliName} ({selectedVoice.name})</span>
+                  <span className="truncate">{selectedVoice.bengaliName} ({selectedVoice.gender === 'male' ? 'ছেলে' : 'মেয়ে'})</span>
                 </div>
                 <ChevronDown className={`w-3.5 h-3.5 text-neutral-400 shrink-0 transition-transform ${isVoiceDropdownOpen ? 'rotate-180' : ''}`} />
               </button>
 
               {isVoiceDropdownOpen && (
-                <div className="absolute top-11 left-0 right-0 z-30 liquid-glass-card rounded-xl p-1.5 max-h-60 overflow-y-auto space-y-1 shadow-2xl border border-cyan-500/30">
+                <div className="absolute top-11 left-0 right-0 z-30 liquid-glass-card rounded-xl p-1.5 max-h-64 overflow-y-auto space-y-1 shadow-2xl border border-cyan-500/30">
                   {VOICES_CATALOG.map((v) => (
                     <button
                       key={v.id}
@@ -552,6 +598,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
                       onClick={() => {
                         setSelectedVoice(v);
                         setSelectedUseCase(v.useCase);
+                        setSelectedGender(v.gender);
                         setIsVoiceDropdownOpen(false);
                       }}
                       className={`w-full flex items-center justify-between p-2 rounded-lg text-left text-xs transition-colors cursor-pointer ${
@@ -561,7 +608,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
                       <div className="flex items-center gap-2 truncate">
                         <span>{v.avatar}</span>
                         <div className="truncate">
-                          <p className="truncate">{v.bengaliName} ({v.name})</p>
+                          <p className="truncate font-medium">{v.bengaliName} ({v.name})</p>
                           <p className="text-[10px] text-neutral-400">{v.useCaseLabel}</p>
                         </div>
                       </div>
@@ -614,7 +661,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
 
           {/* Speed & Tone Controls */}
           <div className="grid grid-cols-2 gap-2 mb-3">
-            <div className="liquid-glass-card-subtle rounded-xl p-2 flex flex-col justify-between">
+            <div className="liquid-glass-card-subtle rounded-xl p-2 flex flex-col justify-between bg-white/5 border border-white/5">
               <div className="flex items-center justify-between text-[11px] text-neutral-300 mb-1">
                 <span className="flex items-center gap-1">
                   <Gauge className="w-3 h-3 text-cyan-400" />
@@ -633,7 +680,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
               />
             </div>
 
-            <div className="liquid-glass-card-subtle rounded-xl p-2 flex flex-col justify-between">
+            <div className="liquid-glass-card-subtle rounded-xl p-2 flex flex-col justify-between bg-white/5 border border-white/5">
               <div className="flex items-center justify-between text-[11px] text-neutral-300 mb-1">
                 <span className="flex items-center gap-1">
                   <SlidersHorizontal className="w-3 h-3 text-cyan-400" />
@@ -653,45 +700,6 @@ export const HomeView: React.FC<HomeViewProps> = ({
             </div>
           </div>
 
-          {/* Error and Rate-Limit Notice Banner */}
-          {errorMessage && (
-            <div className="p-3 rounded-xl border mb-3 flex items-start justify-between gap-2.5 transition-all bg-amber-500/10 border-amber-400/40 text-amber-200">
-              <div className="flex items-start gap-2.5 text-xs min-w-0">
-                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-amber-400" />
-                <div className="min-w-0">
-                  <p className="font-semibold text-xs leading-relaxed">{errorMessage}</p>
-                  <div className="flex flex-wrap items-center gap-2 mt-2">
-                    <button
-                      type="button"
-                      onClick={() => setShowKeyModal(true)}
-                      className="px-2.5 py-1 rounded-lg bg-cyan-400 hover:bg-cyan-300 text-black text-[11px] font-bold transition-colors flex items-center gap-1 cursor-pointer"
-                    >
-                      <Key className="w-3 h-3" />
-                      <span>Google Gemini কী দিন</span>
-                    </button>
-                    <a
-                      href="https://aistudio.google.com/app/apikey"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-[11px] text-cyan-300 underline hover:text-cyan-200 flex items-center gap-0.5"
-                    >
-                      <span>Google AI Studio থেকে ফ্রি কী নিন</span>
-                      <ExternalLink className="w-3 h-3" />
-                    </a>
-                  </div>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setErrorMessage(null)}
-                className="p-1 text-neutral-400 hover:text-white rounded-lg cursor-pointer shrink-0"
-                title="বন্ধ করুন"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            </div>
-          )}
-
           {/* GENERATE BUTTON */}
           <button
             type="button"
@@ -706,12 +714,12 @@ export const HomeView: React.FC<HomeViewProps> = ({
             {isGenerating ? (
               <div className="flex items-center gap-2">
                 <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                <span>উচ্চমানের ভয়েস প্রস্তুত হচ্ছে...</span>
+                <span>ভয়েস প্রস্তুত হচ্ছে...</span>
               </div>
             ) : (
               <>
                 <Play className="w-4 h-4 fill-white text-white" />
-                <span>ভয়েস জেনারেট করুন (Generate Voice)</span>
+                <span>ভয়েস জেনারেট করুন ({selectedGender === 'male' ? 'ছেলে কণ্ঠ' : 'মেয়ে কণ্ঠ'})</span>
                 <Sparkles className="w-3.5 h-3.5 text-cyan-200" />
               </>
             )}
@@ -733,7 +741,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
         <section className="mb-4">
           <div className="flex items-center justify-between mb-2">
             <h2 className="text-xs font-semibold text-neutral-300 flex items-center gap-1.5">
-              <span>মডেলের নমুনা শুনুন ({currentLangCode === 'bn' ? 'বাংলা' : currentLangCode === 'hi' ? 'हिन्दी' : 'English'}):</span>
+              <span>মডেলের নমুনা অডিও ({selectedGender === 'male' ? 'ছেলে' : 'মেয়ে'} কণ্ঠ):</span>
             </h2>
             <button
               onClick={onNavigateToVoices}
@@ -744,7 +752,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            {VOICES_CATALOG.slice(0, 4).map((voice) => {
+            {VOICES_CATALOG.filter(v => v.gender === selectedGender).slice(0, 4).map((voice) => {
               const isSelected = selectedVoice.id === voice.id;
               const isPlayingPreview = previewingVoiceId === voice.id;
 
@@ -754,6 +762,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
                   onClick={() => {
                     setSelectedVoice(voice);
                     setSelectedUseCase(voice.useCase);
+                    setSelectedGender(voice.gender);
                   }}
                   className={`liquid-glass-card rounded-xl p-2.5 flex items-center justify-between cursor-pointer transition-all ${
                     isSelected ? 'border-cyan-400/50 bg-cyan-950/20 shadow-[0_0_15px_rgba(56,189,248,0.15)]' : 'hover:border-white/20'
@@ -766,7 +775,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
                         {voice.bengaliName} ({voice.name})
                       </p>
                       <p className="text-[10px] text-neutral-400 truncate">
-                        {voice.useCaseLabel} · {voice.categoryLabel}
+                        {voice.useCaseLabel} · {voice.gender === 'male' ? 'ছেলে' : 'মেয়ে'}
                       </p>
                     </div>
                   </div>
@@ -780,7 +789,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
                     className={`w-8 h-8 rounded-lg liquid-glass-button flex items-center justify-center text-white shrink-0 cursor-pointer transition-all ${
                       isPlayingPreview ? 'bg-cyan-500/30 border-cyan-400 shadow-[0_0_10px_rgba(56,189,248,0.4)]' : 'hover:border-cyan-400/40'
                     }`}
-                    title={isPlayingPreview ? 'থামুন' : 'খাঁটি এআই ভয়েস শুনুন'}
+                    title={isPlayingPreview ? 'থামুন' : 'নমুনা শুনুন'}
                   >
                     {isPlayingPreview ? (
                       previewLoading ? (

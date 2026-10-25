@@ -6,6 +6,8 @@ export type VoiceCategory =
   | 'friendly'
   | 'story';
 
+export type VoiceGender = 'male' | 'female';
+
 export type VoiceUseCase = 
   | 'ad'          // বিজ্ঞাপন / কমার্শিয়াল
   | 'news'        // সংবাদ ও উপস্থাপনা
@@ -21,7 +23,7 @@ export interface Voice {
   bengaliName: string;
   hindiName?: string;
   englishName?: string;
-  gender: 'male' | 'female' | 'child';
+  gender: VoiceGender;
   category: VoiceCategory;
   categoryLabel: string;
   useCase: VoiceUseCase;
