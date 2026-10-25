@@ -70,7 +70,7 @@ export const VoicesView: React.FC<VoicesViewProps> = ({
   };
 
   return (
-    <div className="w-full flex flex-col items-center pb-24 md:pb-10 pt-2">
+    <div className="w-full flex flex-col items-center pb-28 pt-2">
       <div className="w-full max-w-[430px] md:max-w-4xl lg:max-w-5xl px-4 sm:px-6">
         
         {/* Header */}

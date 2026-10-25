@@ -55,4 +55,4 @@ export interface GeneratedAudioItem {
   blobSize?: number;
 }
 
-export type ActiveTab = 'home' | 'voices' | 'account';
+export type ActiveTab = 'home' | 'voices' | 'history' | 'account';

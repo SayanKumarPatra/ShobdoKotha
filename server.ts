@@ -14,31 +14,49 @@ const port = parseInt(process.env.PORT || '3000', 10);
 
 app.use(express.json({ limit: '10mb' }));
 
+// Initialize Google Gemini AI SDK for authentic studio speech synthesis
+const ai = new GoogleGenAI({
+  apiKey: process.env.GEMINI_API_KEY,
+  httpOptions: {
+    headers: {
+      'User-Agent': 'aistudio-build',
+    },
+  },
+});
+
+// Voice mapping to Gemini and Cartesia
 const GEMINI_VOICE_MAP: Record<string, { voiceName: string; defaultStyle: string }> = {
+  // 1. বিজ্ঞাপন / অ্যাডভার্টাইজ
   'ad-commercial-puck': {
     voiceName: 'Puck',
     defaultStyle: 'Energetic, enthusiastic and persuasive commercial marketing ad voice in natural Bengali',
   },
+  // 2. গল্প ও কাঠুরে (Storyteller)
   'story-woodcutter-fenrir': {
     voiceName: 'Fenrir',
     defaultStyle: 'Deep, dramatic, traditional folk storyteller narration in clear evocative Bengali',
   },
+  // 3. সংবাদ ও স্টুডিও
   'news-studio-kore': {
     voiceName: 'Kore',
     defaultStyle: 'Clear, articulate, professional national news anchor with standard Bengali pronunciation',
   },
+  // 4. পডকাস্ট ও আরজে
   'podcast-rj-zephyr': {
     voiceName: 'Zephyr',
     defaultStyle: 'Warm, conversational, lively podcast host and audio conversationalist',
   },
+  // 5. শিশুতোষ ও কার্টুন
   'kids-fairy-puck': {
     voiceName: 'Puck',
     defaultStyle: 'Playful, cheerful, lively child storytelling voice',
   },
+  // 6. গম্ভীর ও নাটকীয়
   'charon-documentary': {
     voiceName: 'Charon',
     defaultStyle: 'Authoritative, resonant, deep documentary narrator',
   },
+  // General voices
   'ananya-female-bn': {
     voiceName: 'Kore',
     defaultStyle: 'Sweet, natural, articulate studio narration in standard Bengali',
@@ -47,118 +65,35 @@ const GEMINI_VOICE_MAP: Record<string, { voiceName: string; defaultStyle: string
     voiceName: 'Fenrir',
     defaultStyle: 'Authoritative, clear, natural male studio narrator in Bengali',
   },
+  'sumi-friendly-bn': {
+    voiceName: 'Zephyr',
+    defaultStyle: 'Warm, friendly, compassionate conversational voice',
+  },
+  'tanveer-story-bn': {
+    voiceName: 'Fenrir',
+    defaultStyle: 'Deep, dramatic folk tale narrator',
+  },
+  'arian-child-bn': {
+    voiceName: 'Puck',
+    defaultStyle: 'Energetic, playful child storytelling voice',
+  },
+  'barun-radio-bn': {
+    voiceName: 'Puck',
+    defaultStyle: 'Upbeat commercial radio jockey',
+  },
+  'sarah-en-us': {
+    voiceName: 'Kore',
+    defaultStyle: 'Articulate, professional American English studio voice',
+  },
+  'rahul-en-in': {
+    voiceName: 'Fenrir',
+    defaultStyle: 'Modern Indian English tech presentation voice',
+  },
 };
-
-// Pre-mapped Cartesia voice IDs matching character presets
-const CARTESIA_VOICE_MAP: Record<string, string> = {
-  'ad-commercial-puck': 'b7d50908-b47d-442d-85f8-842ebc2b7407',
-  'story-woodcutter-fenrir': 'ee7ea9f8-c0c1-498c-9f7b-af1277817629',
-  'news-studio-kore': 'f114a467-c40a-4db8-964d-aaba01609cfa',
-  'podcast-rj-zephyr': '2ee87190-8f84-4925-97da-e52547f9462c',
-  'kids-fairy-puck': 'ecd55675-29f4-4a4b-85d6-a5113dbb60fc',
-  'charon-documentary': 'a0e99841-438c-4a64-b679-ae501e7d6091',
-  'ananya-female-bn': '79a125e8-cd45-4c13-8a67-188112f4dd22',
-  'shubho-male-bn': 'a0e99841-438c-4a64-b679-ae501e7d6091',
-};
-const DEFAULT_CARTESIA_VOICE_ID = '48b9e1de-e2fa-4914-8b32-31c437813548';
-
-/**
- * Proxy route for Cartesia API - solves browser CORS issues completely
- */
-app.post('/api/cartesia/tts', async (req, res) => {
-  try {
-    const { 
-      text, 
-      voiceId, 
-      apiKey, 
-      language = 'bn' 
-    } = req.body || {};
-
-    const cleanKey = (apiKey || process.env.VITE_CARTESIA_API_KEY || process.env.CARTESIA_API_KEY || '').trim();
-    if (!cleanKey) {
-      return res.status(401).json({ 
-        error: 'Cartesia API Key is required', 
-        userMessage: 'Cartesia API Key পাওয়া যায়নি। অনুগ্রহ করে আপনার Cartesia API Key যোগ করুন।' 
-      });
-    }
-
-    if (!text || typeof text !== 'string' || !text.trim()) {
-      return res.status(400).json({ 
-        error: 'Text transcript is required', 
-        userMessage: 'অনুগ্রহ করে ভয়েস তৈরির জন্য টেক্সট লিখুন।' 
-      });
-    }
-
-    const cleanText = text.trim();
-    const cartesiaVoiceId = CARTESIA_VOICE_MAP[voiceId] || DEFAULT_CARTESIA_VOICE_ID;
-
-    const payload = {
-      model_id: 'sonic-multilingual',
-      transcript: cleanText,
-      voice: {
-        mode: 'id',
-        id: cartesiaVoiceId,
-      },
-      output_format: {
-        container: 'wav',
-        encoding: 'pcm_s16le',
-        sample_rate: 44100,
-      },
-      language: language || 'bn',
-    };
-
-    const cartesiaResp = await fetch('https://api.cartesia.ai/tts/bytes', {
-      method: 'POST',
-      headers: {
-        'X-API-Key': cleanKey,
-        'Cartesia-Version': '2024-06-10',
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(payload),
-    });
-
-    if (!cartesiaResp.ok) {
-      const errText = await cartesiaResp.text().catch(() => cartesiaResp.statusText);
-      console.error(`Cartesia upstream error (${cartesiaResp.status}):`, errText);
-      
-      let userMsg = 'ভয়েস জেনারেট করতে সমস্যা হয়েছে, পুনরায় চেষ্টা করুন।';
-      if (cartesiaResp.status === 401) {
-        userMsg = 'ভুল Cartesia API Key! অনুগ্রহ করে play.cartesia.ai থেকে সঠিক কী কপি করে দিন।';
-      } else if (cartesiaResp.status === 402 || cartesiaResp.status === 429) {
-        userMsg = 'Cartesia একাউন্টের ফ্রি কোটা বা সীমা শেষ হয়েছে। অনুগ্রহ করে play.cartesia.ai চেক করুন।';
-      }
-
-      return res.status(cartesiaResp.status).json({
-        error: errText,
-        userMessage: userMsg,
-        status: cartesiaResp.status
-      });
-    }
-
-    const audioArrayBuffer = await cartesiaResp.arrayBuffer();
-    res.setHeader('Content-Type', 'audio/wav');
-    res.setHeader('Content-Length', audioArrayBuffer.byteLength.toString());
-    res.setHeader('Cache-Control', 'public, max-age=3600');
-    return res.send(Buffer.from(audioArrayBuffer));
-  } catch (error: any) {
-    console.error('Server Cartesia proxy error:', error);
-    return res.status(500).json({ 
-      error: error?.message || 'Server error proxying Cartesia request',
-      userMessage: 'সার্ভার সংযোগে সমস্যা হয়েছে, পুনরায় চেষ্টা করুন।'
-    });
-  }
-});
 
 app.post('/api/tts/generate', async (req, res) => {
   try {
-    const { 
-      text, 
-      voiceId = 'ananya-female-bn', 
-      useCase = 'general', 
-      speed = 1.0, 
-      cartesiaKey, 
-      geminiApiKey 
-    } = req.body || {};
+    const { text, voiceId = 'ananya-female-bn', useCase = 'general', speed = 1.0, cartesiaKey } = req.body;
 
     if (!text || typeof text !== 'string' || !text.trim()) {
       return res.status(400).json({ error: 'Text transcript is required' });
@@ -166,8 +101,8 @@ app.post('/api/tts/generate', async (req, res) => {
 
     const cleanText = text.trim();
 
-    // 1. Optional Cartesia override if provided
-    if (cartesiaKey && typeof cartesiaKey === 'string') {
+    // 1. Check if user provided custom Cartesia key and wants Cartesia
+    if (cartesiaKey && typeof cartesiaKey === 'string' && cartesiaKey.startsWith('sk_car_')) {
       try {
         const cartesiaResp = await fetch('https://api.cartesia.ai/tts/bytes', {
           method: 'POST',
@@ -177,9 +112,9 @@ app.post('/api/tts/generate', async (req, res) => {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            model_id: 'sonic-multilingual',
+            model_id: 'sonic-3.6',
             transcript: cleanText,
-            voice: { mode: 'id', id: CARTESIA_VOICE_MAP[voiceId] || DEFAULT_CARTESIA_VOICE_ID },
+            voice: { mode: 'id', id: '48b9e1de-e2fa-4914-8b32-31c437813548' },
             output_format: { container: 'wav', encoding: 'pcm_s16le', sample_rate: 44100 },
             language: 'bn',
           }),
@@ -190,33 +125,14 @@ app.post('/api/tts/generate', async (req, res) => {
           res.setHeader('Content-Type', 'audio/wav');
           res.setHeader('Content-Length', cartesiaAudio.byteLength.toString());
           res.setHeader('Cache-Control', 'public, max-age=3600');
-          return res.send(Buffer.from(cartesiaAudio));
+          return res.end(Buffer.from(cartesiaAudio));
         }
       } catch (e) {
-        console.warn('Custom Cartesia failed, falling back to Gemini TTS:', e);
+        console.warn('Custom Cartesia failed, proceeding to Gemini TTS:', e);
       }
     }
 
-    // 2. Resolve Gemini API Key (from request or process.env)
-    const effectiveGeminiKey = geminiApiKey || process.env.GEMINI_API_KEY;
-
-    if (!effectiveGeminiKey) {
-      return res.status(200).json({
-        fallback: true,
-        requiresKey: true,
-        message: 'No GEMINI_API_KEY found. Switched to browser neural speech.',
-      });
-    }
-
-    const ai = new GoogleGenAI({
-      apiKey: effectiveGeminiKey,
-      httpOptions: {
-        headers: {
-          'User-Agent': 'aistudio-build',
-        },
-      },
-    });
-
+    // 2. Primary Google Gemini Flash Lite TTS
     const voiceMapping = GEMINI_VOICE_MAP[voiceId] || GEMINI_VOICE_MAP['ananya-female-bn'];
     let stylePrompt = voiceMapping.defaultStyle;
 
@@ -260,23 +176,17 @@ app.post('/api/tts/generate', async (req, res) => {
     const base64Data = ttsResponse.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
 
     if (!base64Data) {
-      return res.status(200).json({
-        fallback: true,
-        message: 'Gemini TTS returned no audio data. Switched to browser neural speech.',
-      });
+      throw new Error('Gemini TTS returned no audio data');
     }
 
     const audioBuffer = Buffer.from(base64Data, 'base64');
     res.setHeader('Content-Type', 'audio/wav');
     res.setHeader('Content-Length', audioBuffer.length.toString());
     res.setHeader('Cache-Control', 'public, max-age=3600');
-    return res.send(audioBuffer);
+    return res.end(audioBuffer);
   } catch (error) {
-    console.error('Server TTS error:', error);
-    return res.status(200).json({
-      fallback: true,
-      message: 'TTS generation server error, client fallback engaged.',
-    });
+    console.error('TTS Generation error in server:', error);
+    return res.status(500).json({ error: 'Failed to generate voice speech' });
   }
 });
 
