@@ -195,7 +195,7 @@ export function saveToHistory(item: GeneratedAudioItem): void {
 
     // Asynchronously sync to Firestore if user is logged into Firebase
     import('./firebase').then(({ auth, saveAudioToCloud }) => {
-      if (auth.currentUser) {
+      if (auth && auth.currentUser) {
         saveAudioToCloud(auth.currentUser.uid, item).catch((err) => {
           console.debug('Firestore sync failed:', err);
         });

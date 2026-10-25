@@ -17,8 +17,20 @@ export default function App() {
   const [isMenuOpen, setIsMenuOpen] = useState<boolean>(false);
 
   return (
-    <div className="min-h-screen bg-black text-white relative selection:bg-cyan-500/30 selection:text-cyan-100 flex flex-col antialiased">
+    <div className="min-h-screen bg-black text-white relative selection:bg-cyan-500/30 selection:text-cyan-100 flex flex-col antialiased overflow-x-hidden">
       
+      {/* Liquid Glass Background Ambient Glows & Shiny Blue Caustics */}
+      <div className="fixed inset-0 pointer-events-none z-0 overflow-hidden">
+        {/* Top luminous cyan/blue ambient orb */}
+        <div className="absolute -top-36 left-1/2 -translate-x-1/2 w-[650px] h-[450px] bg-gradient-to-b from-cyan-500/18 via-blue-600/12 to-transparent rounded-full blur-[110px]" />
+        
+        {/* Center-left iridescent indigo glow */}
+        <div className="absolute top-1/3 -left-28 w-[380px] h-[380px] bg-blue-600/10 rounded-full blur-[120px]" />
+
+        {/* Bottom-right ocean water caustic reflection */}
+        <div className="absolute -bottom-24 right-5 w-[480px] h-[360px] bg-cyan-600/12 rounded-full blur-[110px]" />
+      </div>
+
       {/* Slide-over menu for mobile */}
       <MenuDrawer
         isOpen={isMenuOpen}
@@ -27,7 +39,7 @@ export default function App() {
         setActiveTab={setActiveTab}
       />
 
-      <div className="flex-1 flex w-full">
+      <div className="flex-1 flex w-full relative z-10">
         {/* Left Desktop Sidebar (automatically shown on desktop) */}
         <DesktopSidebar activeTab={activeTab} setActiveTab={setActiveTab} />
 

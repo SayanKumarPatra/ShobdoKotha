@@ -38,28 +38,35 @@ export const AccountView: React.FC = () => {
   const [isKeySaved, setIsKeySaved] = useState<boolean>(false);
 
   useEffect(() => {
-    // Listen to Firebase Authentication state
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      setCurrentUser(user);
+    // Listen to Firebase Authentication state safely
+    if (auth) {
+      const unsubscribe = onAuthStateChanged(auth, (user) => {
+        setCurrentUser(user);
+        setIsAuthLoading(false);
+        if (user) {
+          setUserName(user.displayName || 'ব্যবহারকারী');
+          setUserEmail(user.email || '');
+        } else {
+          const savedName = localStorage.getItem('shobdokotha_user_name');
+          const savedEmail = localStorage.getItem('shobdokotha_user_email');
+          if (savedName) setUserName(savedName);
+          if (savedEmail) setUserEmail(savedEmail);
+        }
+      });
+      return () => unsubscribe();
+    } else {
       setIsAuthLoading(false);
-      if (user) {
-        setUserName(user.displayName || 'ব্যবহারকারী');
-        setUserEmail(user.email || '');
-      } else {
-        const savedName = localStorage.getItem('shobdokotha_user_name');
-        const savedEmail = localStorage.getItem('shobdokotha_user_email');
-        if (savedName) setUserName(savedName);
-        if (savedEmail) setUserEmail(savedEmail);
-      }
-    });
+      const savedName = localStorage.getItem('shobdokotha_user_name');
+      const savedEmail = localStorage.getItem('shobdokotha_user_email');
+      if (savedName) setUserName(savedName);
+      if (savedEmail) setUserEmail(savedEmail);
+    }
 
     // Load saved API keys
     const savedGemini = localStorage.getItem('shobdokotha_gemini_key') || '';
     const savedCartesia = localStorage.getItem('shobdokotha_cartesia_key') || '';
     setGeminiKey(savedGemini);
     setCartesiaKey(savedCartesia);
-
-    return () => unsubscribe();
   }, []);
 
   const handleGoogleLogin = async () => {

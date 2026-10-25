@@ -16,7 +16,8 @@ import {
   AlertCircle,
   Eye,
   EyeOff,
-  CheckCircle2
+  CheckCircle2,
+  Globe
 } from 'lucide-react';
 import { Logo } from '../Logo';
 import { AudioPlayer } from '../AudioPlayer';
@@ -484,7 +485,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
                   onClick={() => handleSelectPreset(preset)}
                   className={`px-3 py-1.5 rounded-xl text-xs font-medium whitespace-nowrap flex items-center gap-1.5 transition-all cursor-pointer ${
                     isSelected
-                      ? 'bg-white/20 text-white border border-white/30 shadow-md font-semibold'
+                      ? 'bg-gradient-to-r from-cyan-500/25 via-blue-600/20 to-cyan-500/15 text-cyan-200 border border-cyan-400/50 shadow-[0_0_15px_rgba(56,189,248,0.25)] font-semibold'
                       : 'bg-white/5 text-neutral-400 hover:text-white border border-white/5 hover:border-white/10'
                   }`}
                 >
@@ -748,8 +749,10 @@ export const HomeView: React.FC<HomeViewProps> = ({
             type="button"
             disabled={isGenerating}
             onClick={handleGenerate}
-            className={`w-full liquid-glass-button h-12 rounded-xl flex items-center justify-center gap-2 text-white font-semibold text-sm shadow-xl transition-all cursor-pointer ${
-              isGenerating ? 'opacity-70 cursor-wait' : 'hover:bg-white/20'
+            className={`w-full h-12 rounded-xl flex items-center justify-center gap-2 text-white font-semibold text-sm shadow-xl transition-all cursor-pointer relative overflow-hidden ${
+              isGenerating
+                ? 'opacity-70 cursor-wait bg-cyan-950/40 border border-cyan-500/30'
+                : 'bg-gradient-to-r from-cyan-600/35 via-blue-600/40 to-cyan-500/35 hover:from-cyan-500/50 hover:via-blue-500/55 hover:to-cyan-400/50 border border-cyan-400/40 hover:border-cyan-300/70 shadow-[0_0_25px_rgba(56,189,248,0.28)] hover:shadow-[0_0_35px_rgba(56,189,248,0.45)] active:scale-[0.99]'
             }`}
           >
             {isGenerating ? (
