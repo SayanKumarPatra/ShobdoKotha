@@ -1,0 +1,251 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --font-bengali: 'Hind Siliguri', -apple-system, BlinkMacSystemFont, sans-serif;
+    --font-english: 'Outfit', sans-serif;
+  }
+
+  body {
+    background-color: #000000;
+    color: #ffffff;
+    font-family: var(--font-bengali);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Custom glass scrollbar */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: rgba(0, 0, 0, 0.4);
+  }
+  ::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.15);
+    border-radius: 9999px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.3);
+  }
+}
+
+/* ======================================================== */
+/* APPLE LIQUID WATER GLASSMORPHISM (iOS Pure Liquid Glass) */
+/* ======================================================== */
+
+/* Deep Realistic Liquid Water Refraction Canvas & Radial-Gradient Mask */
+.liquid-water-canvas {
+  position: relative;
+}
+
+.liquid-water-canvas::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  backdrop-filter: saturate(180%) blur(20px);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  mask-image: radial-gradient(ellipse 85% 75% at 50% 35%, black 40%, rgba(0, 0, 0, 0.6) 70%, transparent 100%);
+  -webkit-mask-image: radial-gradient(ellipse 85% 75% at 50% 35%, black 40%, rgba(0, 0, 0, 0.6) 70%, transparent 100%);
+  background: radial-gradient(ellipse 80% 55% at 50% 32%, rgba(56, 189, 248, 0.12) 0%, rgba(14, 165, 233, 0.05) 50%, transparent 80%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Primary Glass Container Deep Liquid Water Refraction Layer */
+.liquid-water-refraction {
+  position: relative;
+}
+
+.liquid-water-refraction::before {
+  content: '';
+  position: absolute;
+  inset: -16px;
+  backdrop-filter: saturate(180%) blur(20px);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  mask-image: radial-gradient(ellipse 92% 85% at 50% 42%, black 45%, rgba(0, 0, 0, 0.5) 80%, transparent 100%);
+  -webkit-mask-image: radial-gradient(ellipse 92% 85% at 50% 42%, black 45%, rgba(0, 0, 0, 0.5) 80%, transparent 100%);
+  background: radial-gradient(ellipse 85% 65% at 50% 35%, rgba(56, 189, 248, 0.15) 0%, rgba(2, 132, 199, 0.06) 55%, transparent 85%);
+  pointer-events: none;
+  z-index: -1;
+}
+
+/* Glowing Liquid Water Floating Bottom Bar */
+.apple-liquid-water-nav {
+  position: relative;
+  background: radial-gradient(120% 120% at 50% 0%, rgba(255, 255, 255, 0.14) 0%, rgba(10, 16, 26, 0.45) 60%, rgba(2, 6, 14, 0.75) 100%);
+  backdrop-filter: blur(40px) saturate(240%);
+  -webkit-backdrop-filter: blur(40px) saturate(240%);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-top-color: rgba(255, 255, 255, 0.55);
+  box-shadow: 
+    inset 0 1.5px 2px 0 rgba(255, 255, 255, 0.6),
+    inset 0 -2px 3px 0 rgba(0, 0, 0, 0.7),
+    inset 0 0 16px 2px rgba(56, 189, 248, 0.18),
+    0 20px 45px -5px rgba(0, 0, 0, 0.95),
+    0 0 35px 3px rgba(56, 189, 248, 0.38),
+    0 0 70px 10px rgba(14, 165, 233, 0.2);
+  overflow: hidden;
+}
+
+/* Water surface specular refraction line on top */
+.apple-liquid-water-nav::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 5%;
+  right: 5%;
+  height: 1.5px;
+  background: linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.9) 30%, rgba(56, 189, 248, 0.95) 50%, rgba(255, 255, 255, 0.9) 70%, transparent 100%);
+  pointer-events: none;
+  filter: drop-shadow(0 0 4px rgba(56, 189, 248, 0.8));
+}
+
+/* Caustic shimmer animation inside water glass */
+.apple-liquid-water-nav::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse 60% 30% at 50% 100%, rgba(56, 189, 248, 0.2), transparent 70%);
+  pointer-events: none;
+  animation: waterPulse 4s ease-in-out infinite alternate;
+}
+
+@keyframes waterPulse {
+  0% {
+    opacity: 0.5;
+    transform: scale(0.98);
+  }
+  100% {
+    opacity: 0.9;
+    transform: scale(1.02);
+  }
+}
+
+/* Active Luminous Water Droplet Tab Pill */
+.apple-liquid-glow-pill {
+  background: radial-gradient(100% 100% at 50% 15%, rgba(56, 189, 248, 0.45) 0%, rgba(14, 116, 144, 0.25) 60%, rgba(3, 105, 161, 0.15) 100%);
+  border: 1px solid rgba(125, 211, 252, 0.6);
+  border-top-color: rgba(255, 255, 255, 0.85);
+  box-shadow: 
+    inset 0 1.5px 2px 0 rgba(255, 255, 255, 0.7),
+    inset 0 -1.5px 2px 0 rgba(0, 0, 0, 0.5),
+    0 0 20px 2px rgba(56, 189, 248, 0.5),
+    0 4px 14px 0 rgba(0, 0, 0, 0.7);
+}
+
+/* Radiant Liquid Glass Button (Generate Button & Featured Buttons) */
+.liquid-glass-button {
+  position: relative;
+  background: radial-gradient(120% 120% at 50% 0%, rgba(255, 255, 255, 0.1) 0%, rgba(20, 24, 34, 0.4) 60%, rgba(10, 12, 18, 0.6) 100%);
+  backdrop-filter: blur(28px);
+  -webkit-backdrop-filter: blur(28px);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-top-color: rgba(255, 255, 255, 0.45);
+  box-shadow: 
+    inset 0 1px 1.5px 0 rgba(255, 255, 255, 0.35),
+    inset 0 -1px 1px 0 rgba(0, 0, 0, 0.6),
+    0 8px 24px 0 rgba(0, 0, 0, 0.75);
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  overflow: hidden;
+}
+
+.liquid-glass-button:hover {
+  background: radial-gradient(120% 120% at 50% 0%, rgba(255, 255, 255, 0.16) 0%, rgba(28, 36, 50, 0.5) 60%, rgba(14, 18, 26, 0.7) 100%);
+  border-color: rgba(255, 255, 255, 0.35);
+  border-top-color: rgba(255, 255, 255, 0.7);
+  box-shadow: 
+    inset 0 1.5px 2px 0 rgba(255, 255, 255, 0.55),
+    0 12px 32px 0 rgba(0, 0, 0, 0.85),
+    0 0 25px 2px rgba(56, 189, 248, 0.25);
+  transform: translateY(-1.5px);
+}
+
+.liquid-glass-button:active {
+  transform: translateY(1px);
+  background: rgba(255, 255, 255, 0.04);
+  box-shadow: 
+    inset 0 2px 4px 0 rgba(0, 0, 0, 0.8),
+    0 2px 8px 0 rgba(0, 0, 0, 0.6);
+}
+
+/* Hero & Section Cards */
+.liquid-glass-card {
+  background: radial-gradient(140% 140% at 50% 0%, rgba(255, 255, 255, 0.07) 0%, rgba(16, 18, 24, 0.5) 50%, rgba(8, 10, 14, 0.7) 100%);
+  backdrop-filter: blur(32px) saturate(190%);
+  -webkit-backdrop-filter: blur(32px) saturate(190%);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-top-color: rgba(255, 255, 255, 0.32);
+  box-shadow: 
+    inset 0 1px 1.5px 0 rgba(255, 255, 255, 0.25),
+    inset 0 -1px 1px 0 rgba(0, 0, 0, 0.6),
+    0 16px 40px -4px rgba(0, 0, 0, 0.9);
+}
+
+.liquid-glass-card-subtle {
+  background: rgba(14, 16, 22, 0.45);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-top-color: rgba(255, 255, 255, 0.2);
+  box-shadow: 
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.15),
+    0 8px 24px -2px rgba(0, 0, 0, 0.75);
+}
+
+.liquid-glass-input {
+  background: rgba(6, 8, 12, 0.65);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 
+    inset 0 2px 4px 0 rgba(0, 0, 0, 0.7),
+    inset 0 1px 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+/* Glass Slider Track & Thumb */
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+  cursor: pointer;
+}
+
+input[type="range"]::-webkit-slider-runnable-track {
+  height: 4px;
+  background: rgba(255, 255, 255, 0.18);
+  border-radius: 9999px;
+}
+
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  margin-top: -6px;
+  height: 16px;
+  width: 16px;
+  border-radius: 50%;
+  background: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.8);
+  box-shadow: 0 0 12px rgba(56, 189, 248, 0.8), inset 0 1px 1px rgba(0, 0, 0, 0.2);
+  transition: transform 0.15s ease;
+}
+
+input[type="range"]::-webkit-slider-thumb:hover {
+  transform: scale(1.2);
+}
+
+/* Specular top sheen line */
+.glass-rim-sheen {
+  position: relative;
+}
+.glass-rim-sheen::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 10%;
+  right: 10%;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.4), transparent);
+  pointer-events: none;
+}

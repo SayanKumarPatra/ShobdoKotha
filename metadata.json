@@ -1,0 +1,6 @@
+{
+  "name": "ShobdoKotha – AI Voice Studio",
+  "description": "Turn your words into voice with premium black liquid glassmorphism AI voice generation supporting Bengali, English, and 50+ languages.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
