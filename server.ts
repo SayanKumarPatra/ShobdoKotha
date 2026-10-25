@@ -49,6 +49,106 @@ const GEMINI_VOICE_MAP: Record<string, { voiceName: string; defaultStyle: string
   },
 };
 
+// Pre-mapped Cartesia voice IDs matching character presets
+const CARTESIA_VOICE_MAP: Record<string, string> = {
+  'ad-commercial-puck': 'b7d50908-b47d-442d-85f8-842ebc2b7407',
+  'story-woodcutter-fenrir': 'ee7ea9f8-c0c1-498c-9f7b-af1277817629',
+  'news-studio-kore': 'f114a467-c40a-4db8-964d-aaba01609cfa',
+  'podcast-rj-zephyr': '2ee87190-8f84-4925-97da-e52547f9462c',
+  'kids-fairy-puck': 'ecd55675-29f4-4a4b-85d6-a5113dbb60fc',
+  'charon-documentary': 'a0e99841-438c-4a64-b679-ae501e7d6091',
+  'ananya-female-bn': '79a125e8-cd45-4c13-8a67-188112f4dd22',
+  'shubho-male-bn': 'a0e99841-438c-4a64-b679-ae501e7d6091',
+};
+const DEFAULT_CARTESIA_VOICE_ID = '48b9e1de-e2fa-4914-8b32-31c437813548';
+
+/**
+ * Proxy route for Cartesia API - solves browser CORS issues completely
+ */
+app.post('/api/cartesia/tts', async (req, res) => {
+  try {
+    const { 
+      text, 
+      voiceId, 
+      apiKey, 
+      language = 'bn' 
+    } = req.body || {};
+
+    const cleanKey = (apiKey || process.env.VITE_CARTESIA_API_KEY || process.env.CARTESIA_API_KEY || '').trim();
+    if (!cleanKey) {
+      return res.status(401).json({ 
+        error: 'Cartesia API Key is required', 
+        userMessage: 'Cartesia API Key পাওয়া যায়নি। অনুগ্রহ করে আপনার Cartesia API Key যোগ করুন।' 
+      });
+    }
+
+    if (!text || typeof text !== 'string' || !text.trim()) {
+      return res.status(400).json({ 
+        error: 'Text transcript is required', 
+        userMessage: 'অনুগ্রহ করে ভয়েস তৈরির জন্য টেক্সট লিখুন।' 
+      });
+    }
+
+    const cleanText = text.trim();
+    const cartesiaVoiceId = CARTESIA_VOICE_MAP[voiceId] || DEFAULT_CARTESIA_VOICE_ID;
+
+    const payload = {
+      model_id: 'sonic-multilingual',
+      transcript: cleanText,
+      voice: {
+        mode: 'id',
+        id: cartesiaVoiceId,
+      },
+      output_format: {
+        container: 'wav',
+        encoding: 'pcm_s16le',
+        sample_rate: 44100,
+      },
+      language: language || 'bn',
+    };
+
+    const cartesiaResp = await fetch('https://api.cartesia.ai/tts/bytes', {
+      method: 'POST',
+      headers: {
+        'X-API-Key': cleanKey,
+        'Cartesia-Version': '2024-06-10',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (!cartesiaResp.ok) {
+      const errText = await cartesiaResp.text().catch(() => cartesiaResp.statusText);
+      console.error(`Cartesia upstream error (${cartesiaResp.status}):`, errText);
+      
+      let userMsg = 'ভয়েস জেনারেট করতে সমস্যা হয়েছে, পুনরায় চেষ্টা করুন।';
+      if (cartesiaResp.status === 401) {
+        userMsg = 'ভুল Cartesia API Key! অনুগ্রহ করে play.cartesia.ai থেকে সঠিক কী কপি করে দিন।';
+      } else if (cartesiaResp.status === 402 || cartesiaResp.status === 429) {
+        userMsg = 'Cartesia একাউন্টের ফ্রি কোটা বা সীমা শেষ হয়েছে। অনুগ্রহ করে play.cartesia.ai চেক করুন।';
+      }
+
+      return res.status(cartesiaResp.status).json({
+        error: errText,
+        userMessage: userMsg,
+        status: cartesiaResp.status
+      });
+    }
+
+    const audioArrayBuffer = await cartesiaResp.arrayBuffer();
+    res.setHeader('Content-Type', 'audio/wav');
+    res.setHeader('Content-Length', audioArrayBuffer.byteLength.toString());
+    res.setHeader('Cache-Control', 'public, max-age=3600');
+    return res.send(Buffer.from(audioArrayBuffer));
+  } catch (error: any) {
+    console.error('Server Cartesia proxy error:', error);
+    return res.status(500).json({ 
+      error: error?.message || 'Server error proxying Cartesia request',
+      userMessage: 'সার্ভার সংযোগে সমস্যা হয়েছে, পুনরায় চেষ্টা করুন।'
+    });
+  }
+});
+
 app.post('/api/tts/generate', async (req, res) => {
   try {
     const { 
@@ -67,7 +167,7 @@ app.post('/api/tts/generate', async (req, res) => {
     const cleanText = text.trim();
 
     // 1. Optional Cartesia override if provided
-    if (cartesiaKey && typeof cartesiaKey === 'string' && cartesiaKey.startsWith('sk_car_')) {
+    if (cartesiaKey && typeof cartesiaKey === 'string') {
       try {
         const cartesiaResp = await fetch('https://api.cartesia.ai/tts/bytes', {
           method: 'POST',
@@ -77,9 +177,9 @@ app.post('/api/tts/generate', async (req, res) => {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            model_id: 'sonic-3.6',
+            model_id: 'sonic-multilingual',
             transcript: cleanText,
-            voice: { mode: 'id', id: '48b9e1de-e2fa-4914-8b32-31c437813548' },
+            voice: { mode: 'id', id: CARTESIA_VOICE_MAP[voiceId] || DEFAULT_CARTESIA_VOICE_ID },
             output_format: { container: 'wav', encoding: 'pcm_s16le', sample_rate: 44100 },
             language: 'bn',
           }),

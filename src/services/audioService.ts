@@ -1,7 +1,10 @@
 import { GeneratedAudioItem, Voice, VoiceUseCase } from '../types';
+import { callCartesiaTtsApi, getStoredCartesiaKey, CartesiaError } from './cartesiaService';
+
+export { CartesiaError };
 
 /**
- * Generate real speech audio via server-side Gemini TTS API
+ * Generate real speech audio via Cartesia AI or server-side Gemini TTS API
  */
 export async function generateSpeechAudio({
   text,
@@ -10,6 +13,7 @@ export async function generateSpeechAudio({
   tone,
   useCase = 'general',
   cartesiaApiKey,
+  preferredEngine = 'cartesia',
 }: {
   text: string;
   voice: Voice;
@@ -17,12 +21,40 @@ export async function generateSpeechAudio({
   tone: string;
   useCase?: VoiceUseCase;
   cartesiaApiKey?: string;
+  preferredEngine?: 'cartesia' | 'gemini' | 'auto';
 }): Promise<GeneratedAudioItem> {
   const cleanText = text.trim();
+  const effectiveCartesiaKey = cartesiaApiKey || getStoredCartesiaKey();
 
-  // 1. Call server-side TTS endpoint which uses Google Gemini Flash Lite TTS
+  // 1. Direct Cartesia TTS API call if key is present or requested
+  if (effectiveCartesiaKey && preferredEngine !== 'gemini') {
+    const { blob, audioUrl, duration } = await callCartesiaTtsApi({
+      text: cleanText,
+      voice,
+      apiKey: effectiveCartesiaKey,
+      speed,
+    });
+
+    const item: GeneratedAudioItem = {
+      id: 'cartesia_' + Date.now(),
+      text: cleanText,
+      voice,
+      language: voice.language,
+      speed,
+      tone,
+      useCase,
+      createdAt: new Date().toISOString(),
+      duration,
+      audioUrl,
+      blobSize: blob.size,
+    };
+
+    saveToHistory(item);
+    return item;
+  }
+
+  // 2. Call server-side TTS endpoint which uses Google Gemini Flash Lite TTS
   try {
-    const key = cartesiaApiKey || localStorage.getItem('shobdokotha_cartesia_key') || undefined;
     const response = await fetch('/api/tts/generate', {
       method: 'POST',
       headers: {
@@ -34,7 +66,7 @@ export async function generateSpeechAudio({
         useCase: useCase || voice.useCase || 'general',
         language: voice.langCode,
         speed,
-        cartesiaKey: key,
+        cartesiaKey: effectiveCartesiaKey,
       }),
     });
 
@@ -49,7 +81,7 @@ export async function generateSpeechAudio({
         const durationSec = Math.max(2.5, Math.round((wordCount * 0.42 + cleanText.length * 0.035) / speed));
 
         const item: GeneratedAudioItem = {
-          id: 'gen_' + Date.now(),
+          id: 'gemini_' + Date.now(),
           text: cleanText,
           voice,
           language: voice.language,
@@ -160,6 +192,15 @@ export function saveToHistory(item: GeneratedAudioItem): void {
     const history = getAudioHistory();
     const updated = [item, ...history.filter(h => h.id !== item.id)].slice(0, 30);
     localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(updated));
+
+    // Asynchronously sync to Firestore if user is logged into Firebase
+    import('./firebase').then(({ auth, saveAudioToCloud }) => {
+      if (auth.currentUser) {
+        saveAudioToCloud(auth.currentUser.uid, item).catch((err) => {
+          console.debug('Firestore sync failed:', err);
+        });
+      }
+    }).catch(() => {});
   } catch (e) {
     console.error('Failed to save to history', e);
   }

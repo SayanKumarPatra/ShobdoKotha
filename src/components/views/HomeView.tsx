@@ -11,15 +11,25 @@ import {
   X, 
   ShieldCheck, 
   SlidersHorizontal,
-  Globe,
   ExternalLink,
-  HelpCircle
+  HelpCircle,
+  AlertCircle,
+  Eye,
+  EyeOff,
+  CheckCircle2
 } from 'lucide-react';
 import { Logo } from '../Logo';
 import { AudioPlayer } from '../AudioPlayer';
 import { VOICES_CATALOG, SUPPORTED_LANGUAGES, USE_CASE_PRESETS, UseCasePreset } from '../../data/voices';
 import { Voice, GeneratedAudioItem, VoiceUseCase } from '../../types';
-import { generateSpeechAudio } from '../../services/audioService';
+import { generateSpeechAudio, saveToHistory } from '../../services/audioService';
+import { 
+  callCartesiaTtsApi, 
+  getStoredCartesiaKey, 
+  setStoredCartesiaKey, 
+  validateTtsInput, 
+  CartesiaError 
+} from '../../services/cartesiaService';
 
 interface HomeViewProps {
   onOpenMenu: () => void;
@@ -52,6 +62,11 @@ export const HomeView: React.FC<HomeViewProps> = ({
   const [generatedAudio, setGeneratedAudio] = useState<GeneratedAudioItem | null>(null);
   const [activePreviewVoiceId, setActivePreviewVoiceId] = useState<string | null>(null);
   
+  // Validation and Error states
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [errorType, setErrorType] = useState<'missing_key' | 'invalid_key' | 'quota_exceeded' | 'validation' | 'general' | null>(null);
+  const [textError, setTextError] = useState<string | null>(null);
+
   // Dropdown states
   const [isVoiceDropdownOpen, setIsVoiceDropdownOpen] = useState<boolean>(false);
   const [isLangDropdownOpen, setIsLangDropdownOpen] = useState<boolean>(false);
@@ -62,10 +77,11 @@ export const HomeView: React.FC<HomeViewProps> = ({
   const [hasApiKey, setHasApiKey] = useState<boolean>(false);
 
   useEffect(() => {
-    const savedKey = localStorage.getItem('shobdokotha_gemini_key') || localStorage.getItem('shobdokotha_cartesia_key');
-    if (savedKey) {
+    const savedCartesia = getStoredCartesiaKey();
+    const savedGemini = localStorage.getItem('shobdokotha_gemini_key');
+    if (savedCartesia || savedGemini) {
       setHasApiKey(true);
-      setApiKeyInput(savedKey);
+      setApiKeyInput(savedCartesia || savedGemini || '');
     }
   }, []);
 
@@ -114,74 +130,157 @@ export const HomeView: React.FC<HomeViewProps> = ({
     }
   };
 
-  // Generate Voice for whatever EXACT text is in the textarea
+  // Generate Voice for whatever EXACT text is in the textarea using Cartesia API
   const handleGenerate = async () => {
-    const textToGenerate = text.trim();
-    if (!textToGenerate) {
-      alert('অনুগ্রহ করে বক্সে কিছু টেক্সট লিখুন');
+    // 1. Validate text input
+    const validation = validateTtsInput(text);
+    if (!validation.isValid) {
+      const msg = validation.errorMessage || 'অনুগ্রহ করে বক্সে কিছু টেক্সট লিখুন';
+      setTextError(msg);
+      setErrorMessage(msg);
+      setErrorType('validation');
+      return;
+    }
+
+    setTextError(null);
+    setErrorMessage(null);
+    setErrorType(null);
+
+    // 2. Check for stored user API key
+    const storedCartesiaKey = getStoredCartesiaKey();
+    const storedGeminiKey = localStorage.getItem('shobdokotha_gemini_key');
+
+    if (!storedCartesiaKey && !storedGeminiKey) {
+      setErrorMessage('ভয়েস তৈরির জন্য Cartesia API Key প্রয়োজন। আপনার API কী যোগ করতে নিচে ক্লিক করুন বা ফ্রি কী তৈরি করুন।');
+      setErrorType('missing_key');
+      setShowKeyModal(true);
       return;
     }
 
     setIsGenerating(true);
     try {
-      const result = await generateSpeechAudio({
-        text: textToGenerate,
-        voice: selectedVoice,
-        speed,
-        tone: toneOptions[toneIndex].label,
-        useCase: selectedUseCase,
-      });
-      setGeneratedAudio(result);
-    } catch (error) {
-      console.error('Generation error:', error);
-      alert('ভয়েস তৈরিতে সমস্যা হয়েছে, পুনরায় চেষ্টা করুন।');
+      if (storedCartesiaKey) {
+        // Direct Cartesia API call with binary audio response
+        const { blob, audioUrl, duration } = await callCartesiaTtsApi({
+          text: text.trim(),
+          voice: selectedVoice,
+          apiKey: storedCartesiaKey,
+          speed,
+        });
+
+        const newAudioItem: GeneratedAudioItem = {
+          id: 'cartesia_' + Date.now(),
+          text: text.trim(),
+          voice: selectedVoice,
+          language: selectedVoice.language,
+          speed,
+          tone: toneOptions[toneIndex].label,
+          useCase: selectedUseCase,
+          createdAt: new Date().toISOString(),
+          duration,
+          audioUrl,
+          blobSize: blob.size,
+        };
+
+        saveToHistory(newAudioItem);
+        setGeneratedAudio(newAudioItem);
+        setErrorMessage(null);
+        setErrorType(null);
+      } else {
+        // Fallback to Gemini server endpoint if only Gemini key is configured
+        const result = await generateSpeechAudio({
+          text: text.trim(),
+          voice: selectedVoice,
+          speed,
+          tone: toneOptions[toneIndex].label,
+          useCase: selectedUseCase,
+          preferredEngine: 'gemini',
+        });
+        setGeneratedAudio(result);
+        setErrorMessage(null);
+        setErrorType(null);
+      }
+    } catch (error: any) {
+      console.error('TTS Generation error:', error);
+      if (error instanceof CartesiaError) {
+        setErrorMessage(error.userMessage);
+        if (error.code === 'INVALID_API_KEY' || error.status === 401) {
+          setErrorType('invalid_key');
+        } else if (error.code === 'QUOTA_EXCEEDED' || error.status === 402 || error.status === 429) {
+          setErrorType('quota_exceeded');
+        } else if (error.code === 'MISSING_KEY') {
+          setErrorType('missing_key');
+          setShowKeyModal(true);
+        } else {
+          setErrorType('general');
+        }
+      } else {
+        setErrorMessage(error?.message || 'ভয়েস জেনারেট করতে সমস্যা হয়েছে, পুনরায় চেষ্টা করুন।');
+        setErrorType('general');
+      }
     } finally {
       setIsGenerating(false);
     }
   };
 
+  const [showKeyPassword, setShowKeyPassword] = useState<boolean>(false);
+
   const handleSaveKey = (e: React.FormEvent) => {
     e.preventDefault();
     const cleanKey = apiKeyInput.trim();
     if (cleanKey) {
-      if (cleanKey.startsWith('sk_car_')) {
-        localStorage.setItem('shobdokotha_cartesia_key', cleanKey);
-      } else {
+      setStoredCartesiaKey(cleanKey);
+      if (cleanKey.startsWith('AIza')) {
         localStorage.setItem('shobdokotha_gemini_key', cleanKey);
       }
       setHasApiKey(true);
+      setErrorMessage(null);
+      setErrorType(null);
     } else {
       localStorage.removeItem('shobdokotha_gemini_key');
-      localStorage.removeItem('shobdokotha_cartesia_key');
+      setStoredCartesiaKey('');
       setHasApiKey(false);
     }
     setShowKeyModal(false);
   };
 
   return (
-    <div className="w-full flex flex-col items-center pb-24 pt-2">
+    <div className="w-full flex flex-col items-center pb-24 md:pb-10 pt-1 sm:pt-2">
       <div className="w-full max-w-[430px] md:max-w-4xl px-3 sm:px-6">
         
-        {/* Mobile Top Header (Clean, with quick API Key button) */}
-        <header className="flex items-center justify-between py-2 mb-2 md:hidden">
+        {/* Mobile Top Header (Clean, with quick API Key button - strictly mobile only) */}
+        <header className="flex items-center justify-between py-1.5 mb-2 md:hidden">
           <Logo size="md" showSubtitle={true} />
           <div className="flex items-center gap-1.5">
             <a
-              href="https://aistudio.google.com/app/apikey"
+              href="https://play.cartesia.ai/keys"
               target="_blank"
               rel="noopener noreferrer"
               className="px-2 py-1 rounded-xl bg-cyan-500/20 border border-cyan-400/40 text-[11px] text-cyan-300 font-medium flex items-center gap-1 shadow-sm"
-              title="এখানে ক্লিক করলে আপনার ফ্রি API Key জেনারেট হবে"
+              title="Cartesia থেকে API Key নিন"
             >
-              <span>🔑 ফ্রি কী নিন</span>
+              <span>🔑 Cartesia কী</span>
               <ExternalLink className="w-3 h-3" />
             </a>
             <button
               onClick={() => setShowKeyModal(true)}
-              className="px-2.5 py-1 rounded-xl bg-white/10 border border-white/15 text-xs flex items-center gap-1 text-neutral-300 hover:text-white cursor-pointer"
+              className={`px-2.5 py-1 rounded-xl text-xs flex items-center gap-1 cursor-pointer transition-colors ${
+                hasApiKey 
+                  ? 'bg-emerald-500/15 border border-emerald-500/30 text-emerald-300' 
+                  : 'bg-white/10 border border-white/15 text-neutral-300 hover:text-white'
+              }`}
             >
-              <Key className="w-3 h-3 text-cyan-400" />
-              <span>{hasApiKey ? 'সেটিংস' : 'যোগ করুন'}</span>
+              {hasApiKey ? (
+                <>
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                  <span>কী সংরক্ষিত</span>
+                </>
+              ) : (
+                <>
+                  <Key className="w-3 h-3 text-cyan-400" />
+                  <span>যোগ করুন</span>
+                </>
+              )}
             </button>
           </div>
         </header>
@@ -193,7 +292,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
               <div className="flex items-center justify-between pb-3 border-b border-white/10 mb-3">
                 <div className="flex items-center gap-2">
                   <Key className="w-4 h-4 text-cyan-400" />
-                  <h3 className="font-semibold text-sm text-white">API Key কনফিগারেশন</h3>
+                  <h3 className="font-semibold text-sm text-white">Cartesia API Key কনফিগারেশন</h3>
                 </div>
                 <button 
                   onClick={() => setShowKeyModal(false)}
@@ -203,32 +302,54 @@ export const HomeView: React.FC<HomeViewProps> = ({
                 </button>
               </div>
 
+              {/* Stored Key Status Banner if key already exists */}
+              {hasApiKey && (
+                <div className="p-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-between mb-3 text-xs">
+                  <div className="flex items-center gap-2 text-emerald-300">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                    <span className="font-medium">আপনার এপিআই কী সফলভাবে সংরক্ষিত আছে</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setApiKeyInput('');
+                      setStoredCartesiaKey('');
+                      localStorage.removeItem('shobdokotha_gemini_key');
+                      setHasApiKey(false);
+                    }}
+                    className="text-[11px] text-red-400 hover:text-red-300 underline font-medium cursor-pointer ml-2 shrink-0"
+                  >
+                    মুছে ফেলুন
+                  </button>
+                </div>
+              )}
+
               {/* Direct API Key Generation Links inside Modal */}
               <div className="p-3.5 rounded-2xl bg-cyan-500/10 border border-cyan-400/30 mb-3.5">
                 <p className="text-xs font-semibold text-cyan-200 mb-1 flex items-center gap-1.5">
                   <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
-                  <span>এখানে ক্লিক করলেই আপনার API Key জেনারেট হবে:</span>
+                  <span>Cartesia API Key সংগ্রহ করুন:</span>
                 </p>
                 <p className="text-[11px] text-neutral-300 leading-relaxed mb-2.5">
-                  নিচের বাটনে ক্লিক করে Google AI Studio থেকে ১ ক্লিকে আপনার ফ্রি API Key তৈরি করুন এবং কপি করে নিচের বক্সে পেস্ট করুন:
+                  আল্ট্রা-রিয়েলিস্টিক ভয়েস তৈরির জন্য নিচের বাটনে ক্লিক করে Cartesia থেকে আপনার ফ্রি API Key কপি করে বক্সে পেস্ট করুন:
                 </p>
                 <div className="flex flex-col sm:flex-row gap-2">
-                  <a
-                    href="https://aistudio.google.com/app/apikey"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex-1 py-2 px-3 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-black text-xs font-bold transition-all flex items-center justify-center gap-1.5 shadow-md shadow-cyan-500/20"
-                  >
-                    <span>👉 ফ্রি Gemini API Key নিন</span>
-                    <ExternalLink className="w-3.5 h-3.5" />
-                  </a>
                   <a
                     href="https://play.cartesia.ai/keys"
                     target="_blank"
                     rel="noopener noreferrer"
+                    className="flex-1 py-2 px-3 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-black text-xs font-bold transition-all flex items-center justify-center gap-1.5 shadow-md shadow-cyan-500/20"
+                  >
+                    <span>👉 Cartesia API Key নিন</span>
+                    <ExternalLink className="w-3.5 h-3.5" />
+                  </a>
+                  <a
+                    href="https://aistudio.google.com/app/apikey"
+                    target="_blank"
+                    rel="noopener noreferrer"
                     className="py-2 px-3 rounded-xl bg-white/10 hover:bg-white/15 text-white text-xs font-medium border border-white/15 transition-all flex items-center justify-center gap-1"
                   >
-                    <span>Cartesia Key</span>
+                    <span>Google AI Studio</span>
                     <ExternalLink className="w-3 h-3 text-neutral-400" />
                   </a>
                 </div>
@@ -236,21 +357,36 @@ export const HomeView: React.FC<HomeViewProps> = ({
 
               <form onSubmit={handleSaveKey} className="space-y-3">
                 <div>
-                  <label className="block text-xs text-neutral-300 mb-1">
-                    API Key পেস্ট করুন:
-                  </label>
-                  <input
-                    type="password"
-                    value={apiKeyInput}
-                    onChange={(e) => setApiKeyInput(e.target.value)}
-                    placeholder="AIzaSy... অথবা sk_car_..."
-                    className="w-full liquid-glass-input h-11 px-3.5 rounded-xl text-xs text-white placeholder-neutral-500 focus:outline-none font-mono"
-                  />
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-xs text-neutral-300">
+                      Cartesia API Key পেস্ট করুন:
+                    </label>
+                    <span className="text-[11px] text-neutral-400">
+                      (sk_car_...)
+                    </span>
+                  </div>
+                  <div className="relative">
+                    <input
+                      type={showKeyPassword ? 'text' : 'password'}
+                      value={apiKeyInput}
+                      onChange={(e) => setApiKeyInput(e.target.value)}
+                      placeholder="sk_car_... অথবা আপনার API Key"
+                      className="w-full liquid-glass-input h-11 pl-3.5 pr-10 rounded-xl text-xs text-white placeholder-neutral-500 focus:outline-none font-mono"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowKeyPassword(!showKeyPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-white cursor-pointer"
+                      title={showKeyPassword ? 'কী লুকান' : 'কী দেখুন'}
+                    >
+                      {showKeyPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
                 </div>
 
                 <div className="flex items-center justify-between pt-1">
                   <span className="text-[10px] text-neutral-400">
-                    *কী না দিলেও ব্রাউজারের ভয়েস চলবে।
+                    *কী এই ব্রাউজারে সুরক্ষিতভাবে সংরক্ষিত থাকে।
                   </span>
                   <div className="flex gap-2">
                     <button
@@ -371,24 +507,42 @@ export const HomeView: React.FC<HomeViewProps> = ({
             </span>
           </div>
 
-          <div className="liquid-glass-input rounded-xl p-2.5 mb-2.5 relative focus-within:border-white/30 transition-colors">
+          <div className={`liquid-glass-input rounded-xl p-2.5 mb-2.5 relative transition-all ${
+            textError ? 'border-red-500/60 ring-2 ring-red-500/20' : 'focus-within:border-white/30'
+          }`}>
             <textarea
               rows={4}
               maxLength={5000}
               value={text}
-              onChange={(e) => setText(e.target.value)}
+              onChange={(e) => {
+                setText(e.target.value);
+                if (textError) setTextError(null);
+                if (errorMessage && errorType === 'validation') {
+                  setErrorMessage(null);
+                  setErrorType(null);
+                }
+              }}
               placeholder="এখানে আপনার যেকোনো লেখা লিখুন বা পেস্ট করুন..."
               className="w-full bg-transparent text-white placeholder-neutral-500 text-xs sm:text-sm focus:outline-none resize-none leading-relaxed"
               style={{ fontFamily: 'var(--font-bengali)' }}
             />
+            {textError && (
+              <div className="flex items-center gap-1.5 text-[11px] text-red-300 font-medium pt-1 pb-0.5">
+                <AlertCircle className="w-3.5 h-3.5 text-red-400 shrink-0" />
+                <span>{textError}</span>
+              </div>
+            )}
             <div className="flex justify-between items-center mt-1 pt-1 border-t border-white/5">
               <span className="text-[10px] text-neutral-400">
                 নির্বাচিত মডেল: {selectedVoice.bengaliName} ({selectedVoice.useCaseLabel})
               </span>
               <button
                 type="button"
-                onClick={() => setText('')}
-                className="flex items-center gap-1 text-[11px] text-neutral-400 hover:text-white px-2 py-0.5 rounded hover:bg-white/5"
+                onClick={() => {
+                  setText('');
+                  setTextError(null);
+                }}
+                className="flex items-center gap-1 text-[11px] text-neutral-400 hover:text-white px-2 py-0.5 rounded hover:bg-white/5 cursor-pointer"
               >
                 <Trash2 className="w-3 h-3" />
                 <span>মুছুন</span>
@@ -528,6 +682,67 @@ export const HomeView: React.FC<HomeViewProps> = ({
             </div>
           </div>
 
+          {/* Graceful Error and API Key Notice Banner */}
+          {errorMessage && (
+            <div className={`p-3 rounded-xl border mb-3 flex items-start justify-between gap-2.5 transition-all ${
+              errorType === 'invalid_key' || errorType === 'missing_key'
+                ? 'bg-amber-500/10 border-amber-400/40 text-amber-200'
+                : 'bg-red-500/10 border-red-400/40 text-red-200'
+            }`}>
+              <div className="flex items-start gap-2.5 text-xs min-w-0">
+                <AlertCircle className={`w-4 h-4 shrink-0 mt-0.5 ${
+                  errorType === 'invalid_key' || errorType === 'missing_key' ? 'text-amber-400' : 'text-red-400'
+                }`} />
+                <div className="min-w-0">
+                  <p className="font-semibold text-xs leading-relaxed">{errorMessage}</p>
+                  {(errorType === 'missing_key' || errorType === 'invalid_key') && (
+                    <div className="flex flex-wrap items-center gap-2 mt-2">
+                      <button
+                        type="button"
+                        onClick={() => setShowKeyModal(true)}
+                        className="px-2.5 py-1 rounded-lg bg-amber-400 hover:bg-amber-300 text-black text-[11px] font-bold transition-colors flex items-center gap-1 cursor-pointer"
+                      >
+                        <Key className="w-3 h-3" />
+                        <span>Cartesia কী যোগ করুন</span>
+                      </button>
+                      <a
+                        href="https://play.cartesia.ai/keys"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-[11px] text-cyan-300 underline hover:text-cyan-200 flex items-center gap-0.5"
+                      >
+                        <span>play.cartesia.ai থেকে কী কপি করুন</span>
+                        <ExternalLink className="w-3 h-3" />
+                      </a>
+                    </div>
+                  )}
+                  {errorType === 'quota_exceeded' && (
+                    <a
+                      href="https://play.cartesia.ai"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 mt-1.5 text-[11px] text-cyan-300 underline hover:text-cyan-200"
+                    >
+                      <span>Cartesia একাউন্ট ব্যালেন্স চেক করুন</span>
+                      <ExternalLink className="w-3 h-3" />
+                    </a>
+                  )}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setErrorMessage(null);
+                  setErrorType(null);
+                }}
+                className="p-1 text-neutral-400 hover:text-white rounded-lg cursor-pointer shrink-0"
+                title="বন্ধ করুন"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
+
           {/* GENERATE BUTTON */}
           <button
             type="button"
@@ -540,7 +755,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
             {isGenerating ? (
               <div className="flex items-center gap-2">
                 <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                <span>ভয়েস প্রস্তুত হচ্ছে...</span>
+                <span>Cartesia AI ভয়েস প্রস্তুত হচ্ছে...</span>
               </div>
             ) : (
               <>
